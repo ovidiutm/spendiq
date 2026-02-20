@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { StatementDetails, Transaction } from './types'
 import ReactECharts from 'echarts-for-react'
+import { translate, type Language } from './i18n'
 
 const PIE_COLORS = ['#0ea5e9', '#22c55e', '#f97316', '#6366f1', '#f43f5e', '#14b8a6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444']
 const DASHBOARD_VIEW_STATE_KEY = 'expenses-helper.dashboard-view-state.v1'
@@ -61,7 +62,7 @@ type Props = {
   txs: Transaction[]
   statementDetails: StatementDetails | null
   categories: string[]
-  language: 'ro' | 'en'
+  language: Language
   savingsAccounts: string[]
   onAddSavingsAccount: (iban: string) => void | Promise<void>
   onDeleteSavingsAccount: (iban: string) => void | Promise<void>
@@ -150,7 +151,7 @@ export default function Dashboard({
   canResetCategories,
   onResetSettings,
 }: Props) {
-  const t = (ro: string, en: string) => (language === 'ro' ? ro : en)
+  const t = (ro: string, en: string) => translate(language, ro, en)
   const initialView = loadDashboardViewState()
   const [isResettingSettings, setIsResettingSettings] = useState(false)
   const [categoryActionBusy, setCategoryActionBusy] = useState<'add' | 'rename' | 'delete' | null>(null)

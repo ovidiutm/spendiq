@@ -17,6 +17,7 @@ import {
 import type { StatementDetails, Transaction } from './types'
 import { loadOverrides, saveOverrides, loadCategories, saveCategories, loadSettings, saveSettings } from './storage'
 import Dashboard from './Dashboard'
+import { LANGUAGE_OPTIONS, normalizeLanguage, translate, type Language } from './i18n'
 
 const DEFAULT_CATEGORIES = [
   'Groceries','Restaurants','Transport','Transport/Fuel','Utilities','Internet/Phone','Shopping',
@@ -210,10 +211,6 @@ function inferCategoryAliasesFromExistingData(txs: Transaction[], categories: st
   return aliases
 }
 
-function normalizeLanguage(raw: string | null | undefined): 'ro' | 'en' {
-  return String(raw ?? '').toLowerCase() === 'en' ? 'en' : 'ro'
-}
-
 function normalizeIban(value: string): string {
   return String(value ?? '').replace(/\s+/g, '').toUpperCase().trim()
 }
@@ -257,7 +254,7 @@ export default function App() {
   })
   const [entryMode, setEntryMode] = useState<EntryMode>(() => modeFromPath(window.location.pathname))
   const [resetSignal, setResetSignal] = useState(0)
-  const [language, setLanguage] = useState<'ro' | 'en'>(() => normalizeLanguage(loadSettings()[SETTINGS_KEY_LANGUAGE]))
+  const [language, setLanguage] = useState<Language>(() => normalizeLanguage(loadSettings()[SETTINGS_KEY_LANGUAGE]))
   const [isLanguageSwitching, setIsLanguageSwitching] = useState(false)
   const [modeSwitchingTo, setModeSwitchingTo] = useState<'anonymous' | 'account' | null>(null)
   const [settings, setSettings] = useState<Record<string, string>>(() => loadSettings())
@@ -273,7 +270,7 @@ export default function App() {
     )
   )
 
-  const t = (ro: string, en: string) => (language === 'ro' ? ro : en)
+  const t = (ro: string, en: string) => translate(language, ro, en)
 
   const isLoggedIn = !!userEmail
   const isAccountMode = entryMode === 'account'
@@ -1003,8 +1000,9 @@ export default function App() {
             onChange={e => { void onLanguageChange(e.target.value) }}
             style={{ padding: '6px 8px', borderRadius: 10, border: '1px solid #d1dbe8', background: '#fff', color: '#1f2937', fontSize: 12 }}
           >
-            <option value="ro">Romana</option>
-            <option value="en">English</option>
+              {LANGUAGE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
           </select>
         </div>
         {isLanguageSwitching ? (
@@ -1214,8 +1212,9 @@ export default function App() {
                 onChange={e => { void onLanguageChange(e.target.value) }}
                 style={{ padding: '6px 8px', borderRadius: 10, border: '1px solid #d1dbe8', background: '#fff', color: '#1f2937', fontSize: 12 }}
               >
-                <option value="ro">Romana</option>
-                <option value="en">English</option>
+              {LANGUAGE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
               </select>
             </div>
           ) : (
@@ -1226,8 +1225,9 @@ export default function App() {
                 onChange={e => { void onLanguageChange(e.target.value) }}
                 style={{ padding: '6px 8px', borderRadius: 10, border: '1px solid #d1dbe8', background: '#fff', color: '#1f2937', fontSize: 12 }}
               >
-                <option value="ro">Romana</option>
-                <option value="en">English</option>
+              {LANGUAGE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
               </select>
             </div>
           )}
