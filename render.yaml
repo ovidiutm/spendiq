@@ -7,8 +7,9 @@ databases:
 services:
   - type: web
     name: spendiq-backend
-    runtime: docker
-    dockerfilePath: backend/Dockerfile
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     plan: free
     envVars:
       - key: DATABASE_URL

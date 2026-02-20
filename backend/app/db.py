@@ -10,6 +10,13 @@ DATABASE_URL = os.getenv(
     "postgresql+psycopg://expenses:expenses@localhost:5432/expenses_helper",
 )
 
+# Render (and other platforms) often provide postgres:// or postgresql:// URLs.
+# Normalize them so SQLAlchemy uses the installed psycopg driver explicitly.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgres://") :]
+elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+"):
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgresql://") :]
+
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
