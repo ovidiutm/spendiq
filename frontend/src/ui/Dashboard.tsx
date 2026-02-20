@@ -126,6 +126,60 @@ function buildCsv(txs: Transaction[]): string {
   return lines.join('\r\n')
 }
 
+type OverflowTitleTextProps = {
+  text: string | null | undefined
+  style?: React.CSSProperties
+  className?: string
+  onClick?: React.MouseEventHandler<HTMLDivElement>
+  onMouseEnter?: React.MouseEventHandler<HTMLDivElement>
+  onMouseLeave?: React.MouseEventHandler<HTMLDivElement>
+}
+
+function OverflowTitleText({ text, style, className, onClick, onMouseEnter, onMouseLeave }: OverflowTitleTextProps) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [isOverflowing, setIsOverflowing] = useState(false)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) {
+      setIsOverflowing(false)
+      return
+    }
+
+    const checkOverflow = () => {
+      setIsOverflowing(el.scrollWidth > el.clientWidth + 1)
+    }
+
+    checkOverflow()
+
+    let ro: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(checkOverflow)
+      ro.observe(el)
+    }
+
+    window.addEventListener('resize', checkOverflow)
+    return () => {
+      window.removeEventListener('resize', checkOverflow)
+      if (ro) ro.disconnect()
+    }
+  }, [text])
+
+  return (
+    <div
+      ref={ref}
+      className={className}
+      style={style}
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      title={isOverflowing ? String(text ?? '') : undefined}
+    >
+      {text ?? ''}
+    </div>
+  )
+}
+
 export default function Dashboard({
   txs,
   statementDetails,
@@ -1304,9 +1358,9 @@ export default function Dashboard({
             <div style={{ height: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 20px', columnGap: 10, rowGap: 0 }}>
               <div style={{ gridColumn: 1, gridRow: 1, borderRight: '1px solid #e2e8f0', paddingRight: 10, minWidth: 0, display: 'grid', gridTemplateRows: `repeat(${Math.max(topMerchants.length, 1)}, minmax(0, 1fr))` }}>
                 {topMerchants.map((m, idx) => (
-                  <div
+                  <OverflowTitleText
                     key={`top-merchant-label-${idx}`}
-                    title={m.name}
+                    text={m.name}
                     style={{
                       alignSelf: 'center',
                       fontSize: 11,
@@ -1320,9 +1374,7 @@ export default function Dashboard({
                     onMouseEnter={() => setHoveredTopMerchant(m.name)}
                     onMouseLeave={() => setHoveredTopMerchant(prev => (prev === m.name ? null : prev))}
                     onClick={() => setChartFocusMerchant(prev => (prev === m.name ? null : m.name))}
-                  >
-                    {m.name}
-                  </div>
+                  />
                 ))}
                 {!topMerchants.length && (
                   <div style={{ alignSelf: 'center', fontSize: 12, color: '#94a3b8' }}>{t('Nu exista date pentru comercianti.', 'No merchant data.')}</div>
@@ -1590,16 +1642,11 @@ export default function Dashboard({
                 >
                   <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>{formatDateDDMMYYYY(tx.date)}</td>
                   <td style={{ padding: '8px 6px', width: 300, minWidth: 300, maxWidth: 300 }}>
-                    <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={tx.merchant}>
-                      {tx.merchant}
-                    </div>
+                    <OverflowTitleText text={tx.merchant} style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} />
                     <div style={{ fontSize: 12, color: '#666' }}>{tx.method ?? ''}</div>
                   </td>
-                  <td
-                    style={{ padding: '8px 6px', width: 300, minWidth: 300, maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                    title={tx.title}
-                  >
-                    {tx.title}
+                  <td style={{ padding: '8px 6px', width: 300, minWidth: 300, maxWidth: 300 }}>
+                    <OverflowTitleText text={tx.title} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} />
                   </td>
                   <td style={{ padding: '8px 6px', width: categoryCellWidth, minWidth: categoryCellWidth, maxWidth: categoryCellWidth }}>
                     <select

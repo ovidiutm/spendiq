@@ -99,3 +99,22 @@ html, body, #root {
     grid-template-columns: 1fr;
   }
 }
+
+.breadcrumb-link {
+  transition: none !important;
+  transform: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+.breadcrumb-link:hover:not(:disabled) {
+  transform: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  text-decoration: underline;
+}
+
+.breadcrumb-link:active:not(:disabled) {
+  transform: none !important;
+  filter: none !important;
+}
