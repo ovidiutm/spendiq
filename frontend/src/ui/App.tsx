@@ -938,7 +938,7 @@ export default function App() {
   if (entryMode === 'landing') {
     return (
       <div id="page-landing" style={{ fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding: 16, width: '100%', maxWidth: 1200, margin: '0 auto', minHeight: '98dvh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflowX: 'clip' }}>
-        <header style={{ width: '100%', boxSizing: 'border-box', background: '#000', padding: '10px 14px' }}>
+        <header style={{ width: '100%', boxSizing: 'border-box', background: '#1e3a8a', padding: '10px 14px', borderRadius: 12 }}>
           <h1
             style={{
               margin: 0,
@@ -1099,7 +1099,7 @@ export default function App() {
 
   return (
     <div id="page-main" style={{ fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding: 16, width: '100%', maxWidth: 1200, margin: '0 auto', minHeight: '98dvh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflowX: 'clip' }}>
-      <header style={{ width: '100%', boxSizing: 'border-box', background: '#000', padding: '10px 14px', display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+      <header style={{ width: '100%', boxSizing: 'border-box', background: '#1e3a8a', padding: '10px 14px', borderRadius: 12, display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h1
             style={{
@@ -1543,3 +1543,4 @@ export default function App() {
     </div>
   )
 }
+
