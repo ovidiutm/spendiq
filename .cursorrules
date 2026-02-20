@@ -1,7 +1,0 @@
-You are working in the repository "Expenses Helper".
-Goal: V1 me-only app that parses bank statement PDFs (ING first), normalizes transactions, categorizes, and renders a dashboard.
-Constraints:
-- Hybrid privacy: parse locally; optional cloud AI categorization for unknown merchants only (toggle).
-- Never put API keys in frontend. Use backend env vars.
-- Prefer minimal, readable changes; update docs when behavior changes.
-- When modifying categorization/overrides, preserve backwards compatibility with existing localStorage values where possible.
