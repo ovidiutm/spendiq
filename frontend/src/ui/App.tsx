@@ -987,9 +987,9 @@ export default function App() {
           >
             <button
               id="btn-breadcrumb-mode-selection-landing"
-              className="app-btn breadcrumb-link"
+              className="app-btn"
               onClick={() => {}}
-              style={{ border: 'none', background: 'transparent', padding: 0 }}
+              style={{ border: 'none', background: 'transparent', color: '#0f172a', fontWeight: 600, padding: 0 }}
             >
               {t('Selectare Mod', 'Mode Selection')}
             </button>
@@ -1150,9 +1150,9 @@ export default function App() {
         >
           <button
             id="btn-breadcrumb-mode-selection"
-            className="app-btn breadcrumb-link"
+            className="app-btn"
             onClick={() => { setEntryMode('landing') }}
-            style={{ border: 'none', background: 'transparent', padding: 0 }}
+            style={{ border: 'none', background: 'transparent', color: '#0f172a', fontWeight: 600, padding: 0 }}
           >
             {t('Selectare Mod', 'Mode Selection')}
           </button>

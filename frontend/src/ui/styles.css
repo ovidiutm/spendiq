@@ -4,6 +4,11 @@ html, body, #root {
   overflow-x: hidden;
 }
 
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
 .app-btn {
   cursor: pointer;
   transition: transform 120ms ease, box-shadow 180ms ease, filter 180ms ease, opacity 180ms ease;
@@ -13,6 +18,11 @@ html, body, #root {
   transform: translateY(-1px);
   filter: brightness(1.03) saturate(1.03);
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
+}
+
+#btn-breadcrumb-mode-selection-landing.app-btn:hover:not(:disabled),
+#btn-breadcrumb-mode-selection.app-btn:hover:not(:disabled) {
+  box-shadow: none !important;
 }
 
 .app-btn:active:not(:disabled) {
@@ -98,23 +108,4 @@ html, body, #root {
   .top-cards-grid {
     grid-template-columns: 1fr;
   }
-}
-
-.breadcrumb-link {
-  transition: none !important;
-  transform: none !important;
-  box-shadow: none !important;
-  filter: none !important;
-}
-
-.breadcrumb-link:hover:not(:disabled) {
-  transform: none !important;
-  box-shadow: none !important;
-  filter: none !important;
-  text-decoration: underline;
-}
-
-.breadcrumb-link:active:not(:disabled) {
-  transform: none !important;
-  filter: none !important;
 }
