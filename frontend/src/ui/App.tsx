@@ -29,6 +29,25 @@ const LEGACY_STATEMENT_DETAILS_CACHE_KEY = 'expenses-helper.statement-details-ca
 const CATEGORY_ALIAS_MERCHANT = '__CATEGORY_ALIAS__'
 const SETTINGS_KEY_SAVINGS_ACCOUNTS = 'savings_accounts'
 const SETTINGS_KEY_LANGUAGE = 'language'
+const APP_BASE_PATH = (() => {
+  const raw = String(import.meta.env.BASE_URL ?? '/').trim()
+  const withLeadingSlash = raw.startsWith('/') ? raw : `/${raw}`
+  const withoutTrailingSlash = withLeadingSlash.replace(/\/+$/, '')
+  return withoutTrailingSlash.length > 0 ? withoutTrailingSlash : ''
+})()
+
+function stripAppBasePath(pathname: string): string {
+  if (!APP_BASE_PATH) return pathname
+  if (pathname === APP_BASE_PATH) return '/'
+  if (pathname.startsWith(`${APP_BASE_PATH}/`)) return pathname.slice(APP_BASE_PATH.length)
+  return pathname
+}
+
+function withAppBasePath(path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  if (!APP_BASE_PATH) return normalizedPath
+  return `${APP_BASE_PATH}${normalizedPath}`
+}
 
 function normalizeCategories(cats: string[]): string[] {
   const mapped = cats.map(c => (c === 'Dining' ? 'Restaurants' : c)).map(c => c.trim()).filter(Boolean)
@@ -38,15 +57,16 @@ function normalizeCategories(cats: string[]): string[] {
 }
 
 function modeFromPath(pathname: string): 'landing' | 'anonymous' | 'account' {
-  if (pathname.startsWith('/anonymous')) return 'anonymous'
-  if (pathname.startsWith('/account')) return 'account'
+  const relativePath = stripAppBasePath(pathname)
+  if (relativePath.startsWith('/anonymous')) return 'anonymous'
+  if (relativePath.startsWith('/account')) return 'account'
   return 'landing'
 }
 
 function pathForMode(mode: 'landing' | 'anonymous' | 'account', isLoggedIn: boolean): string {
-  if (mode === 'landing') return '/mode-selection'
-  if (mode === 'anonymous') return '/anonymous/dashboard'
-  return isLoggedIn ? '/account/dashboard' : '/account/login'
+  if (mode === 'landing') return withAppBasePath('/mode-selection')
+  if (mode === 'anonymous') return withAppBasePath('/anonymous/dashboard')
+  return isLoggedIn ? withAppBasePath('/account/dashboard') : withAppBasePath('/account/login')
 }
 
 function getDashboardCacheKey(mode: 'anonymous' | 'account', userEmail: string | null): string {
