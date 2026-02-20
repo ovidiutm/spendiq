@@ -15,8 +15,12 @@ uvicorn app.main:app --reload
 Health:
 - http://localhost:8000/health
 
-Parse ING statement:
-- POST http://localhost:8000/api/parse/ing (multipart form-data: file)
+Parse bank statement:
+- POST `http://localhost:8000/api/parse/statement` (multipart form-data: `file`)
+- Legacy alias: POST `http://localhost:8000/api/parse/ing` (deprecated)
+
+Note:
+- Current parsing logic was built primarily using ING statement samples and is continuously adapted for broader bank format compatibility.
 
 Auth:
 - POST `/auth/register`

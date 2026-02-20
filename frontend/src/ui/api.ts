@@ -7,7 +7,7 @@ export type AuthMe = {
   email?: string
 }
 
-export type ParseIngResponse = {
+export type ParseStatementResponse = {
   transactions: Transaction[]
   statementDetails: StatementDetails
 }
@@ -44,16 +44,21 @@ async function extractErrorMessage(res: Response, fallback: string): Promise<str
   return fallback
 }
 
-export async function parseIng(file: File): Promise<ParseIngResponse> {
+export async function parseStatement(file: File): Promise<ParseStatementResponse> {
   const fd = new FormData()
   fd.append('file', file)
-  const res = await apiFetch('/api/parse/ing', { method: 'POST', body: fd })
+  const res = await apiFetch('/api/parse/statement', { method: 'POST', body: fd })
   if (!res.ok) throw new Error(await extractErrorMessage(res, `Parse failed: ${res.status}`))
   const json = await res.json()
   return {
     transactions: (json.transactions ?? []) as Transaction[],
     statementDetails: (json.statement_details ?? {}) as StatementDetails,
   }
+}
+
+// Backward-compatible alias used in older code paths.
+export async function parseIng(file: File): Promise<ParseStatementResponse> {
+  return parseStatement(file)
 }
 
 export async function categorize(

@@ -392,12 +392,7 @@ def put_my_settings(
     return {"settings": payload.settings}
 
 
-@app.post("/api/parse/ing")
-async def parse_ing(file: UploadFile = File(...)):
-    """
-    Parse ING RO statement PDF (text-based).
-    Returns normalized transactions (amount signed: debits negative, credits positive).
-    """
+async def _parse_statement_impl(file: UploadFile) -> dict:
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Please upload a PDF file.")
 
@@ -419,11 +414,29 @@ async def parse_ing(file: UploadFile = File(...)):
         if not txs:
             raise HTTPException(status_code=400, detail="Uploaded PDF is not a bank account statement.")
     return {
-        "bank": "ING",
+        "bank": "Auto-Detected",
         "transactions": txs,
         "count": len(txs),
         "statement_details": statement_details,
     }
+
+
+@app.post("/api/parse/statement")
+async def parse_statement(file: UploadFile = File(...)):
+    """
+    Parse a bank statement PDF (text-based where possible) and return normalized transactions.
+    The current parser was built and validated primarily on ING statement layouts and is being
+    iteratively adapted for broader bank format compatibility.
+    """
+    return await _parse_statement_impl(file)
+
+
+@app.post("/api/parse/ing", deprecated=True)
+async def parse_ing_legacy_alias(file: UploadFile = File(...)):
+    """
+    Backward-compatible alias. Prefer /api/parse/statement.
+    """
+    return await _parse_statement_impl(file)
 
 
 @app.post("/api/categorize")

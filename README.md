@@ -3,7 +3,7 @@
 SpendIQ is a statement-to-dashboard app focused on fast transaction review and categorization.
 
 Current scope:
-- Import one bank statement PDF (currently ING format support).
+- Import one bank statement PDF (parser currently tuned primarily on ING samples, with ongoing adaptation for other formats).
 - Parse transactions and statement details.
 - Auto-categorize transactions with override support.
 - Explore data in an interactive dashboard (categories, top merchants, balance overview, transactions table).
@@ -13,7 +13,7 @@ Current scope:
 
 ## Main Features
 
-- PDF import + parsing (`/api/parse/ing`).
+- PDF import + parsing (`/api/parse/statement`).
 - Category management (add/rename/delete).
 - Category override strategies:
   - Merchant + Type.
@@ -88,7 +88,8 @@ User data:
 - `POST /api/me/reset-data`
 
 Parsing/categorization:
-- `POST /api/parse/ing`
+- `POST /api/parse/statement`
+- `POST /api/parse/ing` (legacy alias, deprecated)
 - `POST /api/categorize`
 
 ## Persistence Behavior
@@ -102,5 +103,5 @@ Parsing/categorization:
 
 ## Notes
 
-- Current parser endpoint is ING-specific.
+- Parser behavior is bank-statement oriented and continuously adapted as new statement formats are validated.
 - AI categorization endpoint exists as stub (`/api/ai/categorize`).

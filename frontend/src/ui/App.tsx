@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react'
 import {
-  parseIng,
+  parseStatement,
   categorize,
   authMe,
   authLogin,
@@ -434,7 +434,7 @@ export default function App() {
     setIsBuildingDashboard(true)
     setLoading(true); setError(null); setRunInfo(null)
     try {
-      const parsed = await parseIng(selectedFile)
+      const parsed = await parseStatement(selectedFile)
       const categorized = await categorize(parsed.transactions, overrides, savingsAccounts)
       const aliases = {
         ...inferCategoryAliasesFromExistingData(txs, categories),
