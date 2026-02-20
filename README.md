@@ -6,19 +6,17 @@
 
 <p align="center">
   <a href="https://ovidiutm.github.io/spendiq"><img alt="Live Demo" src="https://img.shields.io/badge/Live-GitHub%20Pages-2563eb?style=for-the-badge"></a>
-  <a href="https://github.com/ovidiutm/spendiq/actions/workflows/deploy-pages.yml"><img alt="Pages Deploy" src="https://img.shields.io/github/actions/workflow/status/ovidiutm/spendiq/deploy-pages.yml?branch=main&style=for-the-badge"></a>
   <a href="https://github.com/ovidiutm/spendiq/commits/main"><img alt="Last Commit" src="https://img.shields.io/github/last-commit/ovidiutm/spendiq?style=for-the-badge"></a>
 </p>
 
 ## Table of Contents
 - [Overview](#overview)
+- [Live Demo](#live-demo)
 - [Why SpendIQ](#why-spendiq)
 - [Main Features](#main-features)
 - [Tech Stack](#tech-stack)
 - [Quick Start (Docker)](#quick-start-docker)
 - [Run Without Docker](#run-without-docker)
-- [GitHub Pages Frontend Deploy](#github-pages-frontend-deploy)
-- [Render Backend Deploy](#render-backend-deploy)
 - [Environment Variables](#environment-variables)
 - [API Overview](#api-overview)
 - [Persistence Behavior](#persistence-behavior)
@@ -37,6 +35,14 @@ Current parser status:
 - Built and validated primarily with ING samples.
 - Intended to work with major bank statement formats.
 - Continuously adapted as new statement formats are tested.
+
+## Live Demo
+The app is currently running online as a demo:
+- Frontend: `https://ovidiutm.github.io/spendiq`
+- Backend API: Render-hosted service (configured for the demo)
+
+If you want to replicate the same hosting setup, see:
+- `DEPLOYMENT.md`
 
 ## Why SpendIQ
 - Fast review loop: import -> parse -> categorize -> analyze.
@@ -105,42 +111,10 @@ npm install
 npm run dev
 ```
 
-## GitHub Pages Frontend Deploy
-Project site:
-- `https://ovidiutm.github.io/spendiq`
-
-Already configured:
-- Vite base path: `/spendiq/` (`frontend/vite.config.ts`)
-- GitHub Actions workflow: `.github/workflows/deploy-pages.yml`
-
-Required GitHub settings:
-1. Repo `Settings` -> `Pages` -> `Source`: `GitHub Actions`
-2. Repo `Settings` -> `Secrets and variables` -> `Actions` -> `Variables`
-   - `VITE_API_BASE=https://<your-backend-public-url>`
-
-## Render Backend Deploy
-This repo includes a Render Blueprint:
-- `render.yaml`
-
-Recommended flow:
-1. Render -> `New` -> `Blueprint`
-2. Select repo `ovidiutm/spendiq`
-3. Confirm services:
-   - `spendiq-db` (PostgreSQL)
-   - `spendiq-backend` (Docker)
-4. Deploy
-5. Put backend URL into GitHub variable:
-   - `VITE_API_BASE=https://<your-render-backend-url>`
-
-For GitHub Pages + cookie auth:
-- `COOKIE_SECURE=true`
-- `COOKIE_SAMESITE=none`
-- `CORS_ALLOW_ORIGINS=https://ovidiutm.github.io`
-
 ## Environment Variables
 | Variable | Required | Example | Scope |
 |---|---|---|---|
-| `VITE_API_BASE` | Yes (for hosted frontend) | `https://spendiq-backend.onrender.com` | Frontend build/runtime API base |
+| `VITE_API_BASE` | Yes (for hosted frontend) | `https://your-backend-url` | Frontend API base |
 | `DATABASE_URL` | Yes | `postgresql+psycopg://expenses:expenses@db:5432/spendiq` | Backend DB connection |
 | `CORS_ALLOW_ORIGINS` | Yes (production) | `https://ovidiutm.github.io` | Backend CORS |
 | `COOKIE_SECURE` | Yes (production) | `true` | Backend session cookie |
@@ -174,12 +148,10 @@ User account mode:
 - Dashboard cache scoped to logged-in account context
 
 ## Troubleshooting
-- Frontend shows README instead of app on Pages:
-  - Verify Pages source is `GitHub Actions` and workflow succeeded.
-- Login works locally but fails on Pages:
-  - Check backend CORS + cookie settings (`COOKIE_SAMESITE=none`, `COOKIE_SECURE=true`).
 - API calls fail on hosted frontend:
-  - Verify `VITE_API_BASE` GitHub Actions variable.
+  - Verify `VITE_API_BASE` and backend CORS/cookie settings.
+- Login works locally but fails on hosted frontend:
+  - Check `COOKIE_SAMESITE=none` and `COOKIE_SECURE=true` on backend.
 - Routes broken under `/spendiq/...`:
   - Keep Vite base path set to `/spendiq/`.
 
@@ -195,6 +167,3 @@ Small focused PRs are preferred.
 - Create branch from `development`
 - Keep changes scoped and tested
 - Open PR to `development`
-
----
-If you want, I can also add a visual section with screenshots/GIFs (`docs/images`) and wire it directly into this README.
