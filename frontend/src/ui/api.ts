@@ -56,11 +56,6 @@ export async function parseStatement(file: File): Promise<ParseStatementResponse
   }
 }
 
-// Backward-compatible alias used in older code paths.
-export async function parseIng(file: File): Promise<ParseStatementResponse> {
-  return parseStatement(file)
-}
-
 export async function categorize(
   transactions: Transaction[],
   merchantOverrides: Record<string, string>,

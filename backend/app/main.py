@@ -431,14 +431,6 @@ async def parse_statement(file: UploadFile = File(...)):
     return await _parse_statement_impl(file)
 
 
-@app.post("/api/parse/ing", deprecated=True)
-async def parse_ing_legacy_alias(file: UploadFile = File(...)):
-    """
-    Backward-compatible alias. Prefer /api/parse/statement.
-    """
-    return await _parse_statement_impl(file)
-
-
 @app.post("/api/categorize")
 def categorize(req: CategorizeRequest):
     txs = categorize_transactions(

@@ -89,7 +89,6 @@ User data:
 
 Parsing/categorization:
 - `POST /api/parse/statement`
-- `POST /api/parse/ing` (legacy alias, deprecated)
 - `POST /api/categorize`
 
 ## Persistence Behavior
