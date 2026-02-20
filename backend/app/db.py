@@ -7,7 +7,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+psycopg://expenses:expenses@localhost:5432/expenses_helper",
+    "postgresql+psycopg://expenses:expenses@localhost:5432/spendiq",
 )
 
 # Render (and other platforms) often provide postgres:// or postgresql:// URLs.

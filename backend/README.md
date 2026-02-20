@@ -8,7 +8,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 # Example DATABASE_URL:
-# postgresql+psycopg://expenses:expenses@localhost:5432/expenses_helper
+# postgresql+psycopg://expenses:expenses@localhost:5432/spendiq
 uvicorn app.main:app --reload
 ```
 

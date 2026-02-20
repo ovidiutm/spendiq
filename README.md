@@ -103,7 +103,7 @@ python -m venv .venv
 # Windows:
 .venv\Scripts\activate
 pip install -r requirements.txt
-set DATABASE_URL=postgresql+psycopg://expenses:expenses@localhost:5432/expenses_helper
+set DATABASE_URL=postgresql+psycopg://expenses:expenses@localhost:5432/spendiq
 uvicorn app.main:app --reload
 ```
 

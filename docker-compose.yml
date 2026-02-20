@@ -2,7 +2,7 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: expenses_helper
+      POSTGRES_DB: spendiq
       POSTGRES_USER: expenses
       POSTGRES_PASSWORD: expenses
     ports:
@@ -13,7 +13,7 @@ services:
   backend:
     build: ./backend
     environment:
-      DATABASE_URL: postgresql+psycopg://expenses:expenses@db:5432/expenses_helper
+      DATABASE_URL: postgresql+psycopg://expenses:expenses@db:5432/spendiq
     ports:
       - "8000:8000"
     depends_on:
