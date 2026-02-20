@@ -50,6 +50,26 @@ Services:
   - email: `admin@local.dev`
   - password: `admin`
 
+## GitHub Pages (Project Site)
+
+This repo is configured to publish the frontend to:
+- `https://ovidiutm.github.io/spendiq`
+
+What is already configured:
+- Vite build base is set to `/spendiq/` in `frontend/vite.config.ts`.
+- GitHub Actions workflow publishes `frontend/dist` to Pages:
+  - `.github/workflows/deploy-pages.yml`
+
+Required GitHub settings:
+1. Repo `Settings` -> `Pages` -> `Source`: `GitHub Actions`.
+2. Repo `Settings` -> `Secrets and variables` -> `Actions` -> `Variables`:
+   - Add `VITE_API_BASE` (your deployed backend URL, e.g. `https://api.your-domain.com`).
+
+Backend CORS requirement for Pages:
+- Set backend env `CORS_ALLOW_ORIGINS` to include your Pages origin:
+  - `https://ovidiutm.github.io`
+- Multiple origins are supported via comma-separated list.
+
 ## Run without Docker
 
 ### Backend

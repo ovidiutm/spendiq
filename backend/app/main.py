@@ -30,7 +30,7 @@ app = FastAPI(title="Expenses Helper API", version="0.2.0")
 # Dev-friendly CORS. Keep allow_credentials=True for cookie auth.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "").split(",") if o.strip()] or ["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

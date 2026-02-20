@@ -20,6 +20,9 @@ Parse bank statement:
 
 Note:
 - Current parsing logic was built primarily using ING statement samples and is continuously adapted for broader bank format compatibility.
+- CORS origins can be configured with `CORS_ALLOW_ORIGINS` (comma-separated).
+  Example:
+  `CORS_ALLOW_ORIGINS=http://localhost:5173,https://ovidiutm.github.io`
 
 Auth:
 - POST `/auth/register`
