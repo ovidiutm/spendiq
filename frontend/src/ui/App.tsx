@@ -245,6 +245,7 @@ export default function App() {
 
   const [authLoading, setAuthLoading] = useState(true)
   const [authBusy, setAuthBusy] = useState(false)
+  const [authActionBusy, setAuthActionBusy] = useState<'login' | 'register' | 'logout' | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [authIdentifier, setAuthIdentifier] = useState('')
   const [authPassword, setAuthPassword] = useState('')
@@ -258,6 +259,7 @@ export default function App() {
   const [resetSignal, setResetSignal] = useState(0)
   const [language, setLanguage] = useState<'ro' | 'en'>(() => normalizeLanguage(loadSettings()[SETTINGS_KEY_LANGUAGE]))
   const [isLanguageSwitching, setIsLanguageSwitching] = useState(false)
+  const [modeSwitchingTo, setModeSwitchingTo] = useState<'anonymous' | 'account' | null>(null)
   const [settings, setSettings] = useState<Record<string, string>>(() => loadSettings())
   const [savingsAccounts, setSavingsAccounts] = useState<string[]>(() =>
     normalizeSavingsAccounts(
@@ -668,6 +670,7 @@ export default function App() {
   const handleAuthAction = async (mode: 'login' | 'register') => {
     const emptyErrors = { identifier: '', password: '', general: '' }
     setAuthBusy(true); setError(null)
+    setAuthActionBusy(mode)
     setAuthFieldErrors(emptyErrors)
     try {
       const payload = { identifier: authIdentifier.trim(), password: authPassword }
@@ -720,11 +723,13 @@ export default function App() {
       setAuthFieldErrors(nextErrors)
     } finally {
       setAuthBusy(false)
+      setAuthActionBusy(null)
     }
   }
 
   const onLogout = async () => {
     setAuthBusy(true)
+    setAuthActionBusy('logout')
     try {
       const accountEmail = userEmail
       await authLogout()
@@ -742,6 +747,7 @@ export default function App() {
       setError(e?.message ?? t('Deconectarea a esuat.', 'Logout failed.'))
     } finally {
       setAuthBusy(false)
+      setAuthActionBusy(null)
     }
   }
 
@@ -912,12 +918,14 @@ export default function App() {
   }, [resetSignal])
 
   const onSelectMode = async (mode: Exclude<EntryMode, 'landing'>) => {
+    setModeSwitchingTo(mode)
     setEntryMode(mode)
     setAuthFieldErrors({ identifier: '', password: '', general: '' })
     setError(null)
     setRunInfo(null)
     if (mode === 'anonymous') {
       loadAnonymousConfig()
+      setModeSwitchingTo(null)
       return
     }
     if (isLoggedIn) {
@@ -926,13 +934,14 @@ export default function App() {
       } catch (e: any) {
         setError(e?.message ?? t('Incarcarea datelor contului a esuat.', 'Failed to load account data.'))
       }
-    }
+        }
+    setModeSwitchingTo(null)
   }
 
   if (entryMode === 'landing') {
     return (
       <div id="page-landing" style={{ fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding: 16, width: '100%', maxWidth: 1200, margin: '0 auto', minHeight: '98dvh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflowX: 'clip' }}>
-        <header style={{ width: '100%', background: '#000', padding: '10px 14px' }}>
+        <header style={{ width: '100%', boxSizing: 'border-box', background: '#000', padding: '10px 14px' }}>
           <h1
             style={{
               margin: 0,
@@ -1025,11 +1034,24 @@ export default function App() {
                       'Works immediately with no account. Categories and overrides are saved only in this browser/device using local storage.'
                     )}
                   </p>
-                  <button
+                                                      <button
                     id="btn-landing-anonymous"
                     className="app-btn"
-                    onClick={() => onSelectMode('anonymous')}
-                    style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #0ea5e9, #2563eb)', color: '#fff', fontWeight: 600 }}
+                    onClick={() => { void onSelectMode('anonymous') }}
+                    disabled={!!modeSwitchingTo}
+                    title={modeSwitchingTo ? t('Incarcare...', 'Loading...') : undefined}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 10,
+                      border: 'none',
+                      background: modeSwitchingTo ? '#d6dce5' : 'linear-gradient(135deg, #0ea5e9, #2563eb)',
+                      color: modeSwitchingTo ? '#49566a' : '#fff',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      opacity: modeSwitchingTo ? 0.95 : 1,
+                    }}
                   >
                     {t('Continua ca Anonim', 'Continue as Anonymous')}
                   </button>
@@ -1042,11 +1064,24 @@ export default function App() {
                       'Sign in to store categories and merchant/type overrides per account in the database, synced across sessions.'
                     )}
                   </p>
-                  <button
+                                                      <button
                     id="btn-landing-account"
                     className="app-btn"
-                    onClick={() => onSelectMode('account')}
-                    style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #16a34a, #15803d)', color: '#fff', fontWeight: 600 }}
+                    onClick={() => { void onSelectMode('account') }}
+                    disabled={!!modeSwitchingTo}
+                    title={modeSwitchingTo ? t('Incarcare...', 'Loading...') : undefined}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 10,
+                      border: 'none',
+                      background: modeSwitchingTo ? '#d6dce5' : 'linear-gradient(135deg, #16a34a, #15803d)',
+                      color: modeSwitchingTo ? '#49566a' : '#fff',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      opacity: modeSwitchingTo ? 0.95 : 1,
+                    }}
                   >
                     {t('Continua cu Cont Utilizator', 'Continue with User Account')}
                   </button>
@@ -1066,7 +1101,7 @@ export default function App() {
 
   return (
     <div id="page-main" style={{ fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding: 16, width: '100%', maxWidth: 1200, margin: '0 auto', minHeight: '98dvh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflowX: 'clip' }}>
-      <header style={{ width: '100%', background: '#000', padding: '10px 14px', display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+      <header style={{ width: '100%', boxSizing: 'border-box', background: '#000', padding: '10px 14px', display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h1
             style={{
@@ -1152,12 +1187,23 @@ export default function App() {
           ) : isLoggedIn ? (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12, color: '#1e293b' }}>{t('Conectat: ', 'Signed in: ')}{userEmail}</span>
-              <button
+                                          <button
                 id="btn-auth-logout"
                 className="app-btn"
                 onClick={onLogout}
                 disabled={authBusy || loading}
-                style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid #d1dbe8', background: '#fff', color: '#1f2937', fontWeight: 600 }}
+                title={authActionBusy === 'logout' ? t('Incarcare...', 'Loading...') : undefined}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 10,
+                  border: '1px solid #d1dbe8',
+                  background: authActionBusy === 'logout' ? '#d6dce5' : '#fff',
+                  color: authActionBusy === 'logout' ? '#49566a' : '#1f2937',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
               >
                 {t('Deconectare', 'Logout')}
               </button>
@@ -1262,21 +1308,41 @@ export default function App() {
               {authFieldErrors.identifier || authFieldErrors.password || authFieldErrors.general}
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 6 }}>
-              <button
+                                          <button
                 id="btn-auth-login"
                 className="app-btn"
                 onClick={() => handleAuthAction('login')}
                 disabled={authBusy || loading}
-                style={{ width: 120, height: 38, padding: 0, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #0ea5e9, #2563eb)', color: '#fff', fontWeight: 600 }}
+                title={authActionBusy === 'login' ? t('Incarcare...', 'Loading...') : undefined}
+                style={{
+                  width: 120,
+                  height: 38,
+                  padding: 0,
+                  borderRadius: 10,
+                  border: 'none',
+                  background: authActionBusy === 'login' ? '#d6dce5' : 'linear-gradient(135deg, #0ea5e9, #2563eb)',
+                  color: authActionBusy === 'login' ? '#49566a' : '#fff',
+                  fontWeight: 600,
+                }}
               >
                 {t('Autentificare', 'Login')}
               </button>
-              <button
+                                          <button
                 id="btn-auth-register"
                 className="app-btn"
                 onClick={() => handleAuthAction('register')}
                 disabled={authBusy || loading}
-                style={{ width: 120, height: 38, padding: 0, borderRadius: 10, border: '1px solid #d1dbe8', background: '#fff', color: '#1f2937', fontWeight: 600 }}
+                title={authActionBusy === 'register' ? t('Incarcare...', 'Loading...') : undefined}
+                style={{
+                  width: 120,
+                  height: 38,
+                  padding: 0,
+                  borderRadius: 10,
+                  border: '1px solid #d1dbe8',
+                  background: authActionBusy === 'register' ? '#d6dce5' : '#fff',
+                  color: authActionBusy === 'register' ? '#49566a' : '#1f2937',
+                  fontWeight: 600,
+                }}
               >
                 {t('Inregistrare', 'Register')}
               </button>
@@ -1449,6 +1515,7 @@ export default function App() {
           onOverrideMerchant={onOverrideMerchant}
           onOverrideTransaction={onOverrideTransaction}
           canResetCategories={canResetCategories}
+          onResetSettings={onResetAppState}
           newCategory={newCategory}
           onNewCategoryChange={setNewCategory}
           onAddCategory={handleAddCategory}

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { StatementDetails, Transaction } from './types'
 import ReactECharts from 'echarts-for-react'
 
@@ -80,6 +80,7 @@ type Props = {
   onCancelRenameCategory: () => void
   onDeleteCategory: (name: string) => void | Promise<void>
   canResetCategories: boolean
+  onResetSettings: () => void | Promise<void>
 }
 
 type SortColumn = 'date' | 'merchant' | 'type' | 'category' | 'amount'
@@ -147,11 +148,23 @@ export default function Dashboard({
   onCancelRenameCategory,
   onDeleteCategory,
   canResetCategories,
+  onResetSettings,
 }: Props) {
   const t = (ro: string, en: string) => (language === 'ro' ? ro : en)
   const initialView = loadDashboardViewState()
-  const handleResetSettings = () => {
-    window.dispatchEvent(new Event('expenses-helper-reset-settings'))
+  const [isResettingSettings, setIsResettingSettings] = useState(false)
+  const [categoryActionBusy, setCategoryActionBusy] = useState<'add' | 'rename' | 'delete' | null>(null)
+  const [savingsAddBusy, setSavingsAddBusy] = useState(false)
+  const [savingsDeleteBusyAccount, setSavingsDeleteBusyAccount] = useState<string | null>(null)
+
+  const handleResetSettings = async () => {
+    if (isResettingSettings) return
+    setIsResettingSettings(true)
+    try {
+      await onResetSettings()
+    } finally {
+      setIsResettingSettings(false)
+    }
   }
   const resetDashboardView = () => {
     setQ('')
@@ -674,22 +687,64 @@ export default function Dashboard({
     }, 1000)
   }
 
-  const handleAddSavingsAccount = async () => {
+    const handleAddSavingsAccount = async () => {
     const normalized = normalizeIban(newSavingsAccount)
-    if (!normalized) return
+    if (!normalized || savingsAddBusy) return
     if (savingsAccounts.includes(normalized)) {
       triggerSavingsAccountHighlight(normalized)
       return
     }
+    setSavingsAddBusy(true)
     setPendingSavingsHighlight(normalized)
     try {
       await onAddSavingsAccount(normalized)
       setNewSavingsAccount('')
     } catch {
       setPendingSavingsHighlight(null)
+    } finally {
+      setSavingsAddBusy(false)
     }
   }
 
+  const handleDeleteSavingsAccount = async (account: string) => {
+    if (savingsDeleteBusyAccount) return
+    setSavingsDeleteBusyAccount(account)
+    try {
+      await onDeleteSavingsAccount(account)
+    } finally {
+      setSavingsDeleteBusyAccount(null)
+    }
+  }
+
+  const handleAddCategoryClick = async () => {
+    if (categoryActionBusy) return
+    setCategoryActionBusy('add')
+    try {
+      await onAddCategory()
+    } finally {
+      setCategoryActionBusy(null)
+    }
+  }
+
+  const handleDeleteCategoryClick = async (name: string) => {
+    if (categoryActionBusy) return
+    setCategoryActionBusy('delete')
+    try {
+      await onDeleteCategory(name)
+    } finally {
+      setCategoryActionBusy(null)
+    }
+  }
+
+  const handleApplyRenameCategoryClick = async () => {
+    if (categoryActionBusy) return
+    setCategoryActionBusy('rename')
+    try {
+      await onApplyRenameCategory()
+    } finally {
+      setCategoryActionBusy(null)
+    }
+  }
   // If user changes selectors/search, clear previous pie drill-down
   // so table and top merchants always follow current selectors.
   useEffect(() => {
@@ -1123,12 +1178,12 @@ export default function Dashboard({
                   justifyContent: 'center',
                 }}
               >
-                {'✚'}
+                {'\u271A'}
               </button>
-              <button
+                                                        <button
                 id="btn-default-settings"
                 className="app-btn"
-                onClick={handleResetSettings}
+                onClick={() => { void handleResetSettings() }}
                 title={t('Reseteaza categoriile la valorile implicite', 'Reset Categories to initial/default name values')}
                 disabled={!canResetCategories}
                 style={{
@@ -1147,7 +1202,7 @@ export default function Dashboard({
                   justifyContent: 'center',
                 }}
               >
-                {'↶'}
+                {'\u21B6'}
               </button>
               
             </div>
@@ -1325,7 +1380,7 @@ export default function Dashboard({
                 }}
                 title={t('Adauga cont de economii', 'Add savings account')}
               >
-                {'✚'}
+                {'\u271A'}
               </button>
             </div>
           </div>
@@ -1672,10 +1727,10 @@ export default function Dashboard({
                   placeholder={t('Nume categorie noua...', 'New category name...')}
                   style={{ padding: 8, borderRadius: 10, border: '1px solid #bbb', minWidth: 240, flex: 1 }}
                 />
-                <button
+                                                                <button
                   id="btn-add-category"
                   className="app-btn"
-                  onClick={onAddCategory}
+                  onClick={() => { void handleAddCategoryClick() }}
                   style={{
                     padding: '8px 12px',
                     borderRadius: 10,
@@ -1683,6 +1738,7 @@ export default function Dashboard({
                     background: 'linear-gradient(135deg, #06b6d4, #0284c7)',
                     color: '#fff',
                     fontWeight: 600,
+                    minWidth: 96,
                   }}
                 >
                   {t('Adauga', 'Add')}
@@ -1718,10 +1774,10 @@ export default function Dashboard({
                     >
                       {t('Redenumeste', 'Rename')}
                     </button>
-                    <button
+                                                                                <button
                       id={`btn-delete-category-${toSafeId(selectedCategory)}`}
                       className="app-btn"
-                      onClick={() => onDeleteCategory(selectedCategory)}
+                      onClick={() => { void handleDeleteCategoryClick(selectedCategory) }}
                       disabled={selectedCategory === 'Other'}
                       style={{
                         padding: '7px 11px',
@@ -1730,6 +1786,7 @@ export default function Dashboard({
                         background: '#fff1f2',
                         color: '#be123c',
                         opacity: selectedCategory === 'Other' ? 0.5 : 1,
+                        minWidth: 96,
                       }}
                     >
                       {t('Sterge', 'Delete')}
@@ -1750,10 +1807,10 @@ export default function Dashboard({
                     style={{ padding: 8, borderRadius: 10, border: '1px solid #bbb', minWidth: 240, flex: 1 }}
                     autoFocus
                   />
-                  <button
+                                                                        <button
                     id="btn-save-category-rename"
                     className="app-btn"
-                    onClick={onApplyRenameCategory}
+                    onClick={() => { void handleApplyRenameCategoryClick() }}
                     style={{
                       padding: '7px 11px',
                       borderRadius: 10,
@@ -1761,6 +1818,7 @@ export default function Dashboard({
                       background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
                       color: '#fff',
                       fontWeight: 600,
+                      minWidth: 96,
                     }}
                   >
                     {t('Salveaza', 'Save')}
@@ -1848,7 +1906,7 @@ export default function Dashboard({
                 placeholder={t('IBAN cont economii', 'Savings account IBAN')}
                 style={{ padding: 8, borderRadius: 10, border: '1px solid #bbb', minWidth: 240, flex: 1 }}
               />
-              <button
+                                                        <button
                 id="btn-add-savings-account"
                 className="app-btn"
                 onClick={() => { void handleAddSavingsAccount() }}
@@ -1859,6 +1917,7 @@ export default function Dashboard({
                   background: 'linear-gradient(135deg, #06b6d4, #0284c7)',
                   color: '#fff',
                   fontWeight: 600,
+                  minWidth: 96,
                 }}
               >
                 {t('Adauga', 'Add')}
@@ -1874,10 +1933,10 @@ export default function Dashboard({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                     <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12 }}>{account}</span>
-                    <button
+                                                                                <button
                       id={`btn-delete-savings-account-${toSafeId(account)}`}
                       className="app-btn"
-                      onClick={() => { void onDeleteSavingsAccount(account) }}
+                      onClick={() => { void handleDeleteSavingsAccount(account) }}
                       style={{
                         padding: '6px 10px',
                         borderRadius: 8,
@@ -1885,6 +1944,7 @@ export default function Dashboard({
                         background: '#fff1f2',
                         color: '#be123c',
                         fontWeight: 600,
+                        minWidth: 96,
                       }}
                     >
                       {t('Sterge', 'Delete')}
