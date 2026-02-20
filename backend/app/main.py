@@ -40,6 +40,9 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SESSION_COOKIE_NAME = "expenses_helper_session"
 SESSION_TTL_DAYS = int(os.getenv("SESSION_TTL_DAYS", "30"))
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax").lower()
+if COOKIE_SAMESITE not in {"lax", "strict", "none"}:
+    COOKIE_SAMESITE = "lax"
 
 DEFAULT_CATEGORIES = [
     "Groceries",
@@ -133,7 +136,7 @@ def set_session_cookie(response: Response, token: str) -> None:
         value=token,
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="lax",
+        samesite=COOKIE_SAMESITE,
         max_age=SESSION_TTL_DAYS * 24 * 60 * 60,
         path="/",
     )

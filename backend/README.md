@@ -24,6 +24,10 @@ Note:
   Example:
   `CORS_ALLOW_ORIGINS=http://localhost:5173,https://ovidiutm.github.io`
 
+Production cookie settings (for frontend hosted on GitHub Pages):
+- `COOKIE_SECURE=true`
+- `COOKIE_SAMESITE=none`
+
 Auth:
 - POST `/auth/register`
 - POST `/auth/login`

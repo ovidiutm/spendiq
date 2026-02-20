@@ -70,6 +70,29 @@ Backend CORS requirement for Pages:
   - `https://ovidiutm.github.io`
 - Multiple origins are supported via comma-separated list.
 
+## Backend Deploy (Render)
+
+Recommended quick path:
+- Use Render with PostgreSQL + Docker web service.
+- This repo includes `render.yaml` for Blueprint deploy.
+
+Steps:
+1. In Render: `New` -> `Blueprint`.
+2. Select repo `ovidiutm/spendiq`.
+3. Confirm services from `render.yaml`:
+   - `spendiq-db` (PostgreSQL)
+   - `spendiq-backend` (Docker from `backend/Dockerfile`)
+4. Deploy.
+5. After deploy, copy backend public URL (example: `https://spendiq-backend.onrender.com`).
+6. In GitHub repo variables, set:
+   - `VITE_API_BASE=https://<your-render-backend-url>`
+7. Trigger frontend Pages deploy (push to `main` or run workflow manually).
+
+Important for auth/session from GitHub Pages:
+- `COOKIE_SECURE=true`
+- `COOKIE_SAMESITE=none`
+- `CORS_ALLOW_ORIGINS=https://ovidiutm.github.io`
+
 ## Run without Docker
 
 ### Backend
