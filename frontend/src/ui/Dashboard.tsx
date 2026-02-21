@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { StatementDetails, Transaction } from './types'
 import ReactECharts from 'echarts-for-react'
-import { translate, type Language } from './i18n'
+import { translateWithKey, type Language } from './i18n'
 
 const PIE_COLORS = ['#0ea5e9', '#22c55e', '#f97316', '#6366f1', '#f43f5e', '#14b8a6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444']
 const DASHBOARD_VIEW_STATE_KEY = 'expenses-helper.dashboard-view-state.v1'
@@ -205,7 +205,9 @@ export default function Dashboard({
   canResetCategories,
   onResetSettings,
 }: Props) {
-  const t = (ro: string, en: string) => translate(language, ro, en)
+  const t = (keyOrRo: string, roOrEn: string, enMaybe?: string) => enMaybe === undefined
+    ? translateWithKey(language, roOrEn, keyOrRo, roOrEn)
+    : translateWithKey(language, keyOrRo, roOrEn, enMaybe)
   const initialView = loadDashboardViewState()
   const [isResettingSettings, setIsResettingSettings] = useState(false)
   const [categoryActionBusy, setCategoryActionBusy] = useState<'add' | 'rename' | 'delete' | null>(null)
@@ -857,7 +859,7 @@ export default function Dashboard({
     if (!financeModal) return null
     if (financeModal === 'income') {
       return {
-        title: t('Tranzactii venituri', 'Income Transactions'),
+        title: t('k_income_transactions', 'Tranzactii venituri', 'Income Transactions'),
         filename: 'income-transactions.csv',
         rows: incomeRows,
         total: incomeRows.reduce((s, r) => s + r.amountAbs, 0),
@@ -866,7 +868,7 @@ export default function Dashboard({
     }
     if (financeModal === 'expenses') {
       return {
-        title: t('Tranzactii cheltuieli', 'Expenses Transactions'),
+        title: t('k_expenses_transactions', 'Tranzactii cheltuieli', 'Expenses Transactions'),
         filename: 'expenses-transactions.csv',
         rows: expenseRows,
         total: expenseRows.reduce((s, r) => s + r.amountAbs, 0),
@@ -874,7 +876,7 @@ export default function Dashboard({
       }
     }
     return {
-      title: t('Economii nete (conturi configurate)', 'Savings Net (Configured accounts)'),
+      title: t('k_savings_net_configured_accounts', 'Economii nete (conturi configurate)', 'Savings Net (Configured accounts)'),
       filename: 'savings-iban-transactions.csv',
       rows: savingsIbanRows,
       total: savingsIbanRows.reduce((s, r) => s + r.amountAbs, 0),
@@ -1021,9 +1023,9 @@ export default function Dashboard({
 
   const incomeVsExpensesOption = useMemo(() => {
     const typeLabel: Record<string, string> = {
-      Income: t('Venituri', 'Income'),
-      Expenses: t('Cheltuieli', 'Expenses'),
-      Savings: t('Economii', 'Savings'),
+      Income: t('k_income', 'Venituri', 'Income'),
+      Expenses: t('k_expenses', 'Cheltuieli', 'Expenses'),
+      Savings: t('k_savings', 'Economii', 'Savings'),
     }
     const barStyles: Record<string, any> = {
       Income: {
@@ -1169,7 +1171,7 @@ export default function Dashboard({
   if (!txs.length) {
     return (
       <section id="dashboard-empty-state" style={{ marginTop: 14, color: '#444' }}>
-        <p>{t('Incarca un extras pentru a vedea dashboard-ul.', 'Upload a statement to see your dashboard.')}</p>
+        <p>{t('k_upload_a_statement_to_see_your_dashboard', 'Incarca un extras pentru a vedea dashboard-ul.', 'Upload a statement to see your dashboard.')}</p>
       </section>
     )
   }
@@ -1177,22 +1179,22 @@ export default function Dashboard({
   return (
     <section id="dashboard-main-section" style={{ marginTop: 14 }}>
       <section id="card-account-statement-details" style={{ border: '1px solid #ddd', borderRadius: 12, padding: 12, marginBottom: 12 }}>
-        <h3 style={{ marginTop: 0, marginBottom: 10 }}>{t('Detalii extras de cont', 'Account Statement Details')}</h3>
+        <h3 style={{ marginTop: 0, marginBottom: 10 }}>{t('k_account_statement_details', 'Detalii extras de cont', 'Account Statement Details')}</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
           <div id="statement-detail-account-holder">
-            <div style={{ fontSize: 12, color: '#64748b' }}>{t('Titular cont', 'Account Holder')}</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>{t('k_account_holder', 'Titular cont', 'Account Holder')}</div>
             <div style={{ fontWeight: 600, color: '#0f172a' }}>{statementDetails?.account_holder || '-'}</div>
           </div>
           <div id="statement-detail-account-number">
-            <div style={{ fontSize: 12, color: '#64748b' }}>{t('Numar cont', 'Account Number')}</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>{t('k_account_number', 'Numar cont', 'Account Number')}</div>
             <div style={{ fontWeight: 600, color: '#0f172a' }}>{statementDetails?.account_number || '-'}</div>
           </div>
           <div id="statement-detail-account-type">
-            <div style={{ fontSize: 12, color: '#64748b' }}>{t('Tip cont', 'Account Type')}</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>{t('k_account_type', 'Tip cont', 'Account Type')}</div>
             <div style={{ fontWeight: 600, color: '#0f172a' }}>{statementDetails?.account_type || '-'}</div>
           </div>
           <div id="statement-detail-statement-period">
-            <div style={{ fontSize: 12, color: '#64748b' }}>{t('Perioada extras', 'Statement Period')}</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>{t('k_statement_period', 'Perioada extras', 'Statement Period')}</div>
             <div style={{ fontWeight: 600, color: '#0f172a' }}>{statementDetails?.statement_period || '-'}</div>
           </div>
         </div>
@@ -1200,15 +1202,15 @@ export default function Dashboard({
       
       <div className="top-cards-grid">
         <div id="card-categories" style={{ border: '1px solid #ddd', borderRadius: 12, padding: 12 }}>
-          <h3 style={{ marginTop: 0 }}>{t('Categorii', 'Categories')}</h3>
+          <h3 style={{ marginTop: 0 }}>{t('k_categories', 'Categorii', 'Categories')}</h3>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
             <select id="select-categories-direction" value={direction} onChange={e => setDirection(e.target.value as any)} style={{ padding: 8, borderRadius: 10, border: '1px solid #bbb', minWidth: 160 }}>
-              <option value="debit">{t('Cheltuieli (debit)', 'Expenses (debits)')}</option>
-              <option value="credit">{t('Venituri (credit)', 'Income (credits)')}</option>
-              <option value="All">{t('Toate', 'All')}</option>
+              <option value="debit">{t('k_expenses_debits', 'Cheltuieli (debit)', 'Expenses (debits)')}</option>
+              <option value="credit">{t('k_income_credits', 'Venituri (credit)', 'Income (credits)')}</option>
+              <option value="All">{t('k_all', 'Toate', 'All')}</option>
             </select>
             <select id="select-categories-filter" value={category} onChange={e => setCategory(e.target.value)} style={{ padding: 8, borderRadius: 10, border: '1px solid #bbb', minWidth: 160 }}>
-              <option value="All">{t('Toate categoriile', 'All categories')}</option>
+              <option value="All">{t('k_all_categories', 'Toate categoriile', 'All categories')}</option>
               {sortedCategories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1216,7 +1218,7 @@ export default function Dashboard({
                 id="btn-open-category-modal"
                 className="app-btn"
                 onClick={() => setIsCategoryModalOpen(true)}
-                title={t('Adauga/Sterge/Editeaza categoria', 'Add/Remove/Edit Category')}
+                title={t('k_add_remove_edit_category', 'Adauga/Sterge/Editeaza categoria', 'Add/Remove/Edit Category')}
                 style={{
                   width: 36,
                   height: 36,
@@ -1233,13 +1235,15 @@ export default function Dashboard({
                   justifyContent: 'center',
                 }}
               >
-                {'\u271A'}
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 640 640" aria-hidden="true">
+                  <path fill="currentColor" d="M160 144C151.2 144 144 151.2 144 160L144 480C144 488.8 151.2 496 160 496L480 496C488.8 496 496 488.8 496 480L496 160C496 151.2 488.8 144 480 144L160 144zM96 160C96 124.7 124.7 96 160 96L480 96C515.3 96 544 124.7 544 160L544 480C544 515.3 515.3 544 480 544L160 544C124.7 544 96 515.3 96 480L96 160zM296 408L296 344L232 344C218.7 344 208 333.3 208 320C208 306.7 218.7 296 232 296L296 296L296 232C296 218.7 306.7 208 320 208C333.3 208 344 218.7 344 232L344 296L408 296C421.3 296 432 306.7 432 320C432 333.3 421.3 344 408 344L344 344L344 408C344 421.3 333.3 432 320 432C306.7 432 296 421.3 296 408z" />
+                </svg>
               </button>
                                                         <button
                 id="btn-default-settings"
                 className="app-btn"
                 onClick={() => { void handleResetSettings() }}
-                title={t('Reseteaza categoriile la valorile implicite', 'Reset Categories to initial/default name values')}
+                title={t('k_reset_categories_to_initial_default_name_values', 'Reseteaza categoriile la valorile implicite', 'Reset Categories to initial/default name values')}
                 disabled={!canResetCategories}
                 style={{
                   width: 36,
@@ -1266,7 +1270,7 @@ export default function Dashboard({
           <div className="categories-content-grid" style={{ minHeight: 210 }}>
             <div className="categories-legend-pane" style={{ borderRight: '1px solid #eef2f7', paddingRight: 12 }}>
               <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
-                {t('Legenda', 'Legend')}
+                {t('k_legend', 'Legenda', 'Legend')}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2, maxHeight: 210, overflowY: 'auto' }}>
                 {categoryLegend.map(item => (
@@ -1308,7 +1312,7 @@ export default function Dashboard({
                   </div>
                 ))}
                 {!categoryLegend.length && (
-                  <div style={{ fontSize: 12, color: '#94a3b8' }}>{t('Nu exista date de categorii pentru filtrele curente.', 'No category data for current filters.')}</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>{t('k_no_category_data_for_current_filters', 'Nu exista date de categorii pentru filtrele curente.', 'No category data for current filters.')}</div>
                 )}
               </div>
             </div>
@@ -1326,7 +1330,7 @@ export default function Dashboard({
         </div>
 
         <div id="card-top-merchants" style={{ border: '1px solid #ddd', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ marginTop: 0 }}>{t('Top Comercianti', 'Top Merchants')}</h3>
+          <h3 style={{ marginTop: 0 }}>{t('k_top_merchants', 'Top Comercianti', 'Top Merchants')}</h3>
           <div style={{ position: 'relative', minWidth: 0, marginBottom: 8 }}>
             <span
               style={{
@@ -1350,7 +1354,7 @@ export default function Dashboard({
             <input
               value={q}
               onChange={e => setQ(e.target.value)}
-              placeholder={t('Cauta comerciant / tip...', 'Search merchant / type...')}
+              placeholder={t('k_search_merchant_type', 'Cauta comerciant / tip...', 'Search merchant / type...')}
               style={{ padding: '8px 8px 8px 30px', borderRadius: 10, border: '1px solid #bbb', width: '100%', minWidth: 0, boxSizing: 'border-box' }}
             />
           </div>
@@ -1377,7 +1381,7 @@ export default function Dashboard({
                   />
                 ))}
                 {!topMerchants.length && (
-                  <div style={{ alignSelf: 'center', fontSize: 12, color: '#94a3b8' }}>{t('Nu exista date pentru comercianti.', 'No merchant data.')}</div>
+                  <div style={{ alignSelf: 'center', fontSize: 12, color: '#94a3b8' }}>{t('k_no_merchant_data', 'Nu exista date pentru comercianti.', 'No merchant data.')}</div>
                 )}
               </div>
               <div style={{ gridColumn: 1, gridRow: 2, borderRight: '1px solid #e2e8f0' }} />
@@ -1406,11 +1410,11 @@ export default function Dashboard({
         </div>
 
         <div id="card-income-expenses-savings" style={{ border: '1px solid #ddd', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ marginTop: 0 }}>{t('Sumar Balanta', 'Balance Overview')}</h3>
+          <h3 style={{ marginTop: 0 }}>{t('k_balance_overview', 'Sumar Balanta', 'Balance Overview')}</h3>
           <div style={{ marginBottom: 8, fontSize: 12, color: '#334155' }}>
-            <div>{t('Diferenta neta:', 'Net difference:')} <strong>{formatRON(incomeVsExpenses.summary.difference)}</strong></div>
+            <div>{t('k_net_difference', 'Diferenta neta:', 'Net difference:')} <strong>{formatRON(incomeVsExpenses.summary.difference)}</strong></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-              <span>{t('Economii nete:', 'Savings net:')} <strong>{formatRON(incomeVsExpenses.summary.savings)}</strong></span>
+              <span>{t('k_savings_net', 'Economii nete:', 'Savings net:')} <strong>{formatRON(incomeVsExpenses.summary.savings)}</strong></span>
               <div style={{ width: 1, height: 18, background: '#dbe4ef' }} />
               <button
                 id="btn-open-savings-accounts-modal"
@@ -1431,9 +1435,11 @@ export default function Dashboard({
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
-                title={t('Adauga cont de economii', 'Add savings account')}
+                title={t('k_add_savings_account', 'Adauga cont de economii', 'Add savings account')}
               >
-                {'\u271A'}
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 640 640" aria-hidden="true">
+                  <path fill="currentColor" d="M160 144C151.2 144 144 151.2 144 160L144 480C144 488.8 151.2 496 160 496L480 496C488.8 496 496 488.8 496 480L496 160C496 151.2 488.8 144 480 144L160 144zM96 160C96 124.7 124.7 96 160 96L480 96C515.3 96 544 124.7 544 160L544 480C544 515.3 515.3 544 480 544L160 544C124.7 544 96 515.3 96 480L96 160zM296 408L296 344L232 344C218.7 344 208 333.3 208 320C208 306.7 218.7 296 232 296L296 296L296 232C296 218.7 306.7 208 320 208C333.3 208 344 218.7 344 232L344 296L408 296C421.3 296 432 306.7 432 320C432 333.3 421.3 344 408 344L344 344L344 408C344 421.3 333.3 432 320 432C306.7 432 296 421.3 296 408z" />
+                </svg>
               </button>
             </div>
           </div>
@@ -1455,9 +1461,9 @@ export default function Dashboard({
       </div>
 
       <div id="card-transactions" style={{ border: '1px solid #ddd', borderRadius: 12, padding: 12, marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>{t('Tranzactii', 'Transactions')}</h3>
+        <h3 style={{ marginTop: 0 }}>{t('k_transactions', 'Tranzactii', 'Transactions')}</h3>
         <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>
-          {t('Treci cu mouse-ul peste un rand pentru detaliile complete din PDF.', 'Hover any row to see full transaction details from the PDF.')}
+          {t('k_hover_any_row_to_see_full_transaction_details_from_the_pdf', 'Treci cu mouse-ul peste un rand pentru detaliile complete din PDF.', 'Hover any row to see full transaction details from the PDF.')}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ position: 'relative', minWidth: 260 }}>
@@ -1483,7 +1489,7 @@ export default function Dashboard({
             <input
               value={tableQuery}
               onChange={e => setTableQuery(e.target.value)}
-              placeholder={t('Filtreaza tabelul...', 'Filter table...')}
+              placeholder={t('k_filter_table', 'Filtreaza tabelul...', 'Filter table...')}
               style={{ padding: '8px 8px 8px 30px', borderRadius: 10, border: '1px solid #bbb', width: '100%', boxSizing: 'border-box' }}
             />
           </div>
@@ -1492,18 +1498,18 @@ export default function Dashboard({
             value={tableQueryField}
             onChange={e => setTableQueryField(e.target.value as ('all' | SortColumn))}
             style={{ padding: 8, borderRadius: 10, border: '1px solid #bbb' }}
-            title={tableQueryField === 'all' ? t('Sunt incluse si detaliile complete ale tranzactiei', 'Full transaction details included') : undefined}
+            title={tableQueryField === 'all' ? t('k_full_transaction_details_included', 'Sunt incluse si detaliile complete ale tranzactiei', 'Full transaction details included') : undefined}
           >
-            <option value="all">{t('Toate coloanele', 'All columns')}</option>
-            <option value="date">{t('Data', 'Date')}</option>
-            <option value="merchant">{t('Comerciant', 'Merchant')}</option>
-            <option value="type">{t('Tip', 'Type')}</option>
-            <option value="category">{t('Categorie', 'Category')}</option>
-            <option value="amount">{t('Suma', 'Amount')}</option>
+            <option value="all">{t('k_all_columns', 'Toate coloanele', 'All columns')}</option>
+            <option value="date">{t('k_date', 'Data', 'Date')}</option>
+            <option value="merchant">{t('k_merchant', 'Comerciant', 'Merchant')}</option>
+            <option value="type">{t('k_type', 'Tip', 'Type')}</option>
+            <option value="category">{t('k_category', 'Categorie', 'Category')}</option>
+            <option value="amount">{t('k_amount', 'Suma', 'Amount')}</option>
           </select>
           <div style={{ width: 1, height: 26, background: '#dbe4ef' }} />
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
-            <span>{t('Salveaza categoria pentru:', 'Save category for:')}</span>
+            <span>{t('k_save_category_for', 'Salveaza categoria pentru:', 'Save category for:')}</span>
           </div>
           <select
             id="select-transactions-category-change-mode"
@@ -1529,7 +1535,7 @@ export default function Dashboard({
                 'Changing one row applies category to all transactions with same Merchant and Type.'
               )}
             >
-              {t('Comerciant + Tip', 'Merchant + Type')}
+              {t('k_merchant_type', 'Comerciant + Tip', 'Merchant + Type')}
             </option>
             <option
               value="single_transaction"
@@ -1538,12 +1544,12 @@ export default function Dashboard({
                 'Changing one row applies category only to that exact transaction.'
               )}
             >
-              {t('Tranzactie individuala', 'Single Transaction')}
+              {t('k_single_transaction', 'Tranzactie individuala', 'Single Transaction')}
             </option>
           </select>
           <div style={{ width: 1, height: 26, background: '#dbe4ef' }} />
           <div style={{ color: '#64748b', fontSize: 12 }}>
-            {t('Tranzactii', 'Transactions')}: {tableRows.length} | {t('Suma totala', 'Amount Sum')}: {formatRON(tableAmountSum)}
+            {t('k_transactions', 'Tranzactii', 'Transactions')}: {tableRows.length} | {t('k_amount_sum', 'Suma totala', 'Amount Sum')}: {formatRON(tableAmountSum)}
           </div>
           <button
             id="btn-export-csv"
@@ -1563,7 +1569,7 @@ export default function Dashboard({
               boxShadow: canExport ? '0 6px 16px rgba(37,99,235,0.25)' : 'none',
             }}
           >
-            {t('Export CSV (filtrat)', 'Export CSV (filtered)')}
+            {t('k_export_csv_filtered', 'Export CSV (filtrat)', 'Export CSV (filtered)')}
           </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
@@ -1579,27 +1585,27 @@ export default function Dashboard({
               <tr>
                 <th style={{ textAlign: 'left', borderBottom: '1px solid #eee', padding: '8px 6px' }}>
                   <button id="btn-sort-date" className="app-btn" onClick={() => toggleSort('date')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', fontWeight: 600 }}>
-                    {t('Data', 'Date')} {sortIndicator('date')}
+                    {t('k_date', 'Data', 'Date')} {sortIndicator('date')}
                   </button>
                 </th>
                 <th style={{ textAlign: 'left', borderBottom: '1px solid #eee', padding: '8px 6px' }}>
                   <button id="btn-sort-merchant" className="app-btn" onClick={() => toggleSort('merchant')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', fontWeight: 600 }}>
-                    {t('Comerciant', 'Merchant')} {sortIndicator('merchant')}
+                    {t('k_merchant', 'Comerciant', 'Merchant')} {sortIndicator('merchant')}
                   </button>
                 </th>
                 <th style={{ textAlign: 'left', borderBottom: '1px solid #eee', padding: '8px 6px' }}>
                   <button id="btn-sort-type" className="app-btn" onClick={() => toggleSort('type')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', fontWeight: 600 }}>
-                    {t('Tip', 'Type')} {sortIndicator('type')}
+                    {t('k_type', 'Tip', 'Type')} {sortIndicator('type')}
                   </button>
                 </th>
                 <th style={{ textAlign: 'left', borderBottom: '1px solid #eee', padding: '8px 6px', width: categoryCellWidth, minWidth: categoryCellWidth, maxWidth: categoryCellWidth }}>
                   <button id="btn-sort-category" className="app-btn" onClick={() => toggleSort('category')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', fontWeight: 600 }}>
-                    {t('Categorie', 'Category')} {sortIndicator('category')}
+                    {t('k_category', 'Categorie', 'Category')} {sortIndicator('category')}
                   </button>
                 </th>
                 <th style={{ textAlign: 'left', borderBottom: '1px solid #eee', padding: '8px 6px' }}>
                   <button id="btn-sort-amount" className="app-btn" onClick={() => toggleSort('amount')} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', fontWeight: 600 }}>
-                    {t('Suma', 'Amount')} {sortIndicator('amount')}
+                    {t('k_amount', 'Suma', 'Amount')} {sortIndicator('amount')}
                   </button>
                 </th>
               </tr>
@@ -1672,8 +1678,8 @@ export default function Dashboard({
                       }}
                     >
                       {categoryChangeMode === 'merchant_type'
-                        ? t('Seteaza categoria per comerciant + tip', 'Set category per merchant + type')
-                        : t('Seteaza categoria doar pentru aceasta tranzactie', 'Set category only for this transaction')}
+                        ? t('k_set_category_per_merchant_type', 'Seteaza categoria per comerciant + tip', 'Set category per merchant + type')
+                        : t('k_set_category_only_for_this_transaction', 'Seteaza categoria doar pentru aceasta tranzactie', 'Set category only for this transaction')}
                     </div>
                   </td>
                   <td style={{ padding: '8px 6px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
@@ -1742,7 +1748,7 @@ export default function Dashboard({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <h4 style={{ margin: 0 }}>{t('Adauga / Editeaza categorie', 'Add / Edit category')}</h4>
+              <h4 style={{ margin: 0 }}>{t('k_add_edit_category', 'Adauga / Editeaza categorie', 'Add / Edit category')}</h4>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button
                   id="btn-close-category-modal"
@@ -1772,7 +1778,7 @@ export default function Dashboard({
                 <input
                   value={newCategory}
                   onChange={e => onNewCategoryChange(e.target.value)}
-                  placeholder={t('Nume categorie noua...', 'New category name...')}
+                  placeholder={t('k_new_category_name', 'Nume categorie noua...', 'New category name...')}
                   style={{ padding: 8, borderRadius: 10, border: '1px solid #bbb', minWidth: 240, flex: 1 }}
                 />
                                                                 <button
@@ -1789,7 +1795,7 @@ export default function Dashboard({
                     minWidth: 96,
                   }}
                 >
-                  {t('Adauga', 'Add')}
+                  {t('k_add', 'Adauga', 'Add')}
                 </button>
               </div>
 
@@ -1800,7 +1806,7 @@ export default function Dashboard({
                   onChange={e => onSelectedCategoryChange(e.target.value)}
                   style={{ padding: 8, borderRadius: 10, border: '1px solid #bbb', minWidth: 240, flex: 1 }}
                 >
-                  <option value="">{t('Selecteaza o categorie...', 'Select a category...')}</option>
+                  <option value="">{t('k_select_a_category', 'Selecteaza o categorie...', 'Select a category...')}</option>
                   {sortedCategories.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
 
@@ -1820,7 +1826,7 @@ export default function Dashboard({
                         opacity: selectedCategory === 'Other' ? 0.5 : 1,
                       }}
                     >
-                      {t('Redenumeste', 'Rename')}
+                      {t('k_rename', 'Redenumeste', 'Rename')}
                     </button>
                                                                                 <button
                       id={`btn-delete-category-${toSafeId(selectedCategory)}`}
@@ -1837,7 +1843,7 @@ export default function Dashboard({
                         minWidth: 96,
                       }}
                     >
-                      {t('Sterge', 'Delete')}
+                      {t('k_delete', 'Sterge', 'Delete')}
                     </button>
                   </>
                 )}
@@ -1869,7 +1875,7 @@ export default function Dashboard({
                       minWidth: 96,
                     }}
                   >
-                    {t('Salveaza', 'Save')}
+                    {t('k_save', 'Salveaza', 'Save')}
                   </button>
                   <button
                     id="btn-cancel-category-rename"
@@ -1883,7 +1889,7 @@ export default function Dashboard({
                       color: '#243447',
                     }}
                   >
-                    {t('Anuleaza', 'Cancel')}
+                    {t('k_cancel', 'Anuleaza', 'Cancel')}
                   </button>
                 </div>
               )}
@@ -1920,7 +1926,7 @@ export default function Dashboard({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <h4 style={{ margin: 0 }}>{t('Conturi de economii', 'Savings Accounts')}</h4>
+              <h4 style={{ margin: 0 }}>{t('k_savings_accounts', 'Conturi de economii', 'Savings Accounts')}</h4>
               <button
                 id="btn-close-savings-accounts-modal"
                 className="app-btn"
@@ -1951,7 +1957,7 @@ export default function Dashboard({
                 id="input-savings-account"
                 value={newSavingsAccount}
                 onChange={e => setNewSavingsAccount(e.target.value)}
-                placeholder={t('IBAN cont economii', 'Savings account IBAN')}
+                placeholder={t('k_savings_account_iban', 'IBAN cont economii', 'Savings account IBAN')}
                 style={{ padding: 8, borderRadius: 10, border: '1px solid #bbb', minWidth: 240, flex: 1 }}
               />
                                                         <button
@@ -1968,7 +1974,7 @@ export default function Dashboard({
                   minWidth: 96,
                 }}
               >
-                {t('Adauga', 'Add')}
+                {t('k_add', 'Adauga', 'Add')}
               </button>
             </div>
 
@@ -1995,20 +2001,20 @@ export default function Dashboard({
                         minWidth: 96,
                       }}
                     >
-                      {t('Sterge', 'Delete')}
+                      {t('k_delete', 'Sterge', 'Delete')}
                     </button>
                   </div>
                   <div style={{ fontSize: 10, color: '#334155' }}>
-                    {t('Tranzactii', 'Transactions')}: <strong>{savingsAccountSummaries[account]?.count ?? 0}</strong> {' '}
-                    {t('Intrari', 'In')}: <strong>{formatRON(savingsAccountSummaries[account]?.inTotal ?? 0)}</strong> {' '}
-                    {t('Iesiri', 'Out')}: <strong>{formatRON(savingsAccountSummaries[account]?.outTotal ?? 0)}</strong> {' '}
+                    {t('k_transactions', 'Tranzactii', 'Transactions')}: <strong>{savingsAccountSummaries[account]?.count ?? 0}</strong> {' '}
+                    {t('k_in', 'Intrari', 'In')}: <strong>{formatRON(savingsAccountSummaries[account]?.inTotal ?? 0)}</strong> {' '}
+                    {t('k_out', 'Iesiri', 'Out')}: <strong>{formatRON(savingsAccountSummaries[account]?.outTotal ?? 0)}</strong> {' '}
                     Net: <strong>{formatRON(savingsAccountSummaries[account]?.net ?? 0)}</strong>
                   </div>
                 </div>
               ))}
               {!savingsAccounts.length && (
                 <div style={{ fontSize: 12, color: '#64748b' }}>
-                  {t('Nu exista conturi de economii adaugate.', 'No savings accounts added.')}
+                  {t('k_no_savings_accounts_added', 'Nu exista conturi de economii adaugate.', 'No savings accounts added.')}
                 </div>
               )}
             </div>
@@ -2066,7 +2072,7 @@ export default function Dashboard({
                       fontWeight: 600,
                     }}
                   >
-                    {t('Export CSV', 'Export CSV')}
+                    {t('k_export_csv', 'Export CSV', 'Export CSV')}
                   </button>
                   <button
                     id="btn-close-finance-modal"
@@ -2088,15 +2094,15 @@ export default function Dashboard({
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12, color: '#334155' }}>
-                <div>{t('Tranzactii', 'Transactions')}: <strong>{financeModalMeta.rows.length}</strong></div>
+                <div>{t('k_transactions', 'Tranzactii', 'Transactions')}: <strong>{financeModalMeta.rows.length}</strong></div>
                 {financeModal === 'savings' ? (
                   <>
-                    <div>{t('Intrari economii', 'Savings In')}: <strong>{formatRON(savingsInTotal)}</strong></div>
-                    <div>{t('Iesiri economii', 'Savings Out')}: <strong>{formatRON(savingsOutTotal)}</strong></div>
-                    <div>{t('Net', 'Net')}: <strong>{formatRON(savingsNetTotal)}</strong></div>
+                    <div>{t('k_savings_in', 'Intrari economii', 'Savings In')}: <strong>{formatRON(savingsInTotal)}</strong></div>
+                    <div>{t('k_savings_out', 'Iesiri economii', 'Savings Out')}: <strong>{formatRON(savingsOutTotal)}</strong></div>
+                    <div>{t('k_net', 'Net', 'Net')}: <strong>{formatRON(savingsNetTotal)}</strong></div>
                   </>
                 ) : (
-                  <div>{t('Total', 'Total')}: <strong>{formatRON(financeModalMeta.total)}</strong></div>
+                  <div>{t('k_total', 'Total', 'Total')}: <strong>{formatRON(financeModalMeta.total)}</strong></div>
                 )}
               </div>
             </div>
@@ -2105,15 +2111,15 @@ export default function Dashboard({
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('Data', 'Date')}</th>
-                    <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('Comerciant', 'Merchant')}</th>
-                    <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('Tip', 'Type')}</th>
-                    <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('Categorie', 'Category')}</th>
-                    <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('Directie', 'Direction')}</th>
+                    <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('k_date', 'Data', 'Date')}</th>
+                    <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('k_merchant', 'Comerciant', 'Merchant')}</th>
+                    <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('k_type', 'Tip', 'Type')}</th>
+                    <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('k_category', 'Categorie', 'Category')}</th>
+                    <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('k_direction', 'Directie', 'Direction')}</th>
                     {financeModalMeta.showFlow && (
-                      <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('Flux economii', 'Savings Flow')}</th>
+                      <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('k_savings_flow', 'Flux economii', 'Savings Flow')}</th>
                     )}
-                    <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('Suma', 'Amount')}</th>
+                    <th style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', padding: '8px 6px', position: 'sticky', top: 0, background: '#fff', zIndex: 5 }}>{t('k_amount', 'Suma', 'Amount')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2135,7 +2141,7 @@ export default function Dashboard({
                   {!financeModalMeta.rows.length && (
                     <tr>
                       <td colSpan={financeModalMeta.showFlow ? 7 : 6} style={{ padding: '10px 6px', color: '#64748b' }}>
-                        {t('Nu exista tranzactii pentru aceasta vizualizare.', 'No transactions found for this view.')}
+                        {t('k_no_transactions_found_for_this_view', 'Nu exista tranzactii pentru aceasta vizualizare.', 'No transactions found for this view.')}
                       </td>
                     </tr>
                   )}
@@ -2148,3 +2154,10 @@ export default function Dashboard({
     </section>
   )
 }
+
+
+
+
+
+
+
