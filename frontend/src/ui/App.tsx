@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react'
+﻿import React, { useRef, useState, useEffect } from 'react'
 import {
   parseStatement,
   categorize,
@@ -17,7 +17,7 @@ import {
 import type { StatementDetails, Transaction } from './types'
 import { loadOverrides, saveOverrides, loadCategories, saveCategories, loadSettings, saveSettings } from './storage'
 import Dashboard from './Dashboard'
-import { LANGUAGE_OPTIONS, normalizeLanguage, translate, type Language } from './i18n'
+import { LANGUAGE_OPTIONS, normalizeLanguage, translateWithKey, type Language } from './i18n'
 
 const DEFAULT_CATEGORIES = [
   'Groceries','Restaurants','Transport','Transport/Fuel','Utilities','Internet/Phone','Shopping',
@@ -270,7 +270,9 @@ export default function App() {
     )
   )
 
-  const t = (ro: string, en: string) => translate(language, ro, en)
+  const t = (keyOrRo: string, roOrEn: string, enMaybe?: string) => enMaybe === undefined
+    ? translateWithKey(language, roOrEn, keyOrRo, roOrEn)
+    : translateWithKey(language, keyOrRo, roOrEn, enMaybe)
 
   const isLoggedIn = !!userEmail
   const isAccountMode = entryMode === 'account'
@@ -299,7 +301,7 @@ export default function App() {
 
   const saveOverridesByMode = async (next: Record<string, string>) => {
     if (isAccountMode) {
-      if (!isLoggedIn) throw new Error(t('Autentifica-te pentru a salva datele contului.', 'Please login to save account data.'))
+      if (!isLoggedIn) throw new Error(t('k_please_login_to_save_account_data', 'Autentifica-te pentru a salva datele contului.', 'Please login to save account data.'))
       await putMyOverrides(next)
       return
     }
@@ -308,7 +310,7 @@ export default function App() {
 
   const saveCategoriesByMode = async (next: string[]) => {
     if (isAccountMode) {
-      if (!isLoggedIn) throw new Error(t('Autentifica-te pentru a salva datele contului.', 'Please login to save account data.'))
+      if (!isLoggedIn) throw new Error(t('k_please_login_to_save_account_data', 'Autentifica-te pentru a salva datele contului.', 'Please login to save account data.'))
       await putMyCategories(next)
       return
     }
@@ -400,20 +402,29 @@ export default function App() {
 
   useEffect(() => {
     if (authLoading) return
+
+    setLoading(true)
+
     if (entryMode === 'anonymous') {
       const cached = loadDashboardCacheForContext('anonymous', null)
       setTxs(cached.txs)
       setStatementDetails(cached.statementDetails)
-      return
-    }
-    if (entryMode === 'account' && isLoggedIn) {
+    } else if (entryMode === 'account' && isLoggedIn) {
       const cached = loadDashboardCacheForContext('account', userEmail)
       setTxs(cached.txs)
       setStatementDetails(cached.statementDetails)
-      return
+    } else {
+      setTxs([])
+      setStatementDetails(null)
     }
-    setTxs([])
-    setStatementDetails(null)
+
+    const doneTimer = window.setTimeout(() => {
+      setLoading(false)
+    }, 300)
+
+    return () => {
+      window.clearTimeout(doneTimer)
+    }
   }, [authLoading, entryMode, isLoggedIn, userEmail])
 
   useEffect(() => {
@@ -476,7 +487,7 @@ export default function App() {
         )
       )
     } catch (e: any) {
-      setError(e?.message ?? t('Eroare necunoscuta', 'Unknown error'))
+      setError(e?.message ?? t('k_unknown_error', 'Eroare necunoscuta', 'Unknown error'))
     } finally {
       setLoading(false)
       setIsBuildingDashboard(false)
@@ -497,7 +508,7 @@ export default function App() {
 
   const onChooseAndBuild = () => {
     if (isAccountMode && !isLoggedIn) {
-      setAuthFieldErrors(prev => ({ ...prev, general: t('Autentifica-te mai intai pentru a folosi modul Cont Utilizator.', 'Please login first to use User Account mode.') }))
+      setAuthFieldErrors(prev => ({ ...prev, general: t('k_please_login_first_to_use_user_account_mode', 'Autentifica-te mai intai pentru a folosi modul Cont Utilizator.', 'Please login first to use User Account mode.') }))
       return
     }
     fileInputRef.current?.click()
@@ -524,7 +535,7 @@ export default function App() {
       await saveOverridesByMode(next)
       await recategorizeCurrent(next)
     } catch (e: any) {
-      setError(e?.message ?? t('Eroare necunoscuta', 'Unknown error'))
+      setError(e?.message ?? t('k_unknown_error', 'Eroare necunoscuta', 'Unknown error'))
     } finally {
       setLoading(false)
     }
@@ -538,7 +549,7 @@ export default function App() {
       await saveOverridesByMode(next)
       await recategorizeCurrent(next)
     } catch (e: any) {
-      setError(e?.message ?? t('Eroare necunoscuta', 'Unknown error'))
+      setError(e?.message ?? t('k_unknown_error', 'Eroare necunoscuta', 'Unknown error'))
     } finally {
       setLoading(false)
     }
@@ -555,7 +566,7 @@ export default function App() {
     try {
       await saveCategoriesByMode(next)
     } catch (e: any) {
-      setError(e?.message ?? t('Eroare necunoscuta', 'Unknown error'))
+      setError(e?.message ?? t('k_unknown_error', 'Eroare necunoscuta', 'Unknown error'))
     }
   }
 
@@ -607,7 +618,7 @@ export default function App() {
       }))
       setTxs(applyCategoryAliases(normalized, nextCategories, aliases))
     } catch (e: any) {
-      setError(e?.message ?? t('Eroare necunoscuta', 'Unknown error'))
+      setError(e?.message ?? t('k_unknown_error', 'Eroare necunoscuta', 'Unknown error'))
     }
   }
 
@@ -660,7 +671,7 @@ export default function App() {
       }))
       setTxs(applyCategoryAliases(normalized, nextCategories, aliases))
     } catch (e: any) {
-      setError(e?.message ?? t('Eroare necunoscuta', 'Unknown error'))
+      setError(e?.message ?? t('k_unknown_error', 'Eroare necunoscuta', 'Unknown error'))
     }
   }
 
@@ -673,8 +684,8 @@ export default function App() {
       const payload = { identifier: authIdentifier.trim(), password: authPassword }
       if (!payload.identifier || !payload.password) {
         setAuthFieldErrors({
-          identifier: payload.identifier ? '' : t('Email/Utilizator este obligatoriu.', 'Email/Username is required.'),
-          password: payload.password ? '' : t('Parola este obligatorie.', 'Password is required.'),
+          identifier: payload.identifier ? '' : t('k_email_username_is_required', 'Email/Utilizator este obligatoriu.', 'Email/Username is required.'),
+          password: payload.password ? '' : t('k_password_is_required', 'Parola este obligatorie.', 'Password is required.'),
           general: '',
         })
         return
@@ -683,7 +694,7 @@ export default function App() {
         const available = await checkIdentifierAvailability(payload.identifier)
         if (!available) {
           setAuthFieldErrors({
-            identifier: t('Acest Email/Utilizator este deja folosit.', 'This Email/Username is already used.'),
+            identifier: t('k_this_email_username_is_already_used', 'Acest Email/Utilizator este deja folosit.', 'This Email/Username is already used.'),
             password: '',
             general: '',
           })
@@ -692,7 +703,7 @@ export default function App() {
       }
       const res = mode === 'login' ? await authLogin(payload) : await authRegister(payload)
       if (!res.authenticated || !res.email) {
-        throw new Error(t('Autentificarea a esuat.', 'Authentication failed.'))
+        throw new Error(t('k_authentication_failed', 'Autentificarea a esuat.', 'Authentication failed.'))
       }
       await loadUserConfig()
       setUserEmail(res.email)
@@ -700,20 +711,20 @@ export default function App() {
       setAuthPassword('')
     } catch (e: any) {
       setUserEmail(null)
-      const msg = String(e?.message ?? t('Autentificarea a esuat.', 'Authentication failed.'))
+      const msg = String(e?.message ?? t('k_authentication_failed', 'Autentificarea a esuat.', 'Authentication failed.'))
       const lower = msg.toLowerCase()
       const nextErrors = { ...emptyErrors }
       if (lower.includes('identifier already registered')) {
-        nextErrors.identifier = t('Acest Email/Utilizator este deja folosit.', 'This Email/Username is already used.')
+        nextErrors.identifier = t('k_this_email_username_is_already_used', 'Acest Email/Utilizator este deja folosit.', 'This Email/Username is already used.')
       } else if (lower.includes('identifier is required')) {
-        nextErrors.identifier = t('Email/Utilizator este obligatoriu.', 'Email/Username is required.')
+        nextErrors.identifier = t('k_email_username_is_required', 'Email/Utilizator este obligatoriu.', 'Email/Username is required.')
       } else if (lower.includes('at least 8 characters')) {
-        nextErrors.password = t('Parola trebuie sa aiba cel putin 8 caractere.', 'Password should have at least 8 characters')
+        nextErrors.password = t('k_password_should_have_at_least_8_characters', 'Parola trebuie sa aiba cel putin 8 caractere.', 'Password should have at least 8 characters')
       } else if (lower.includes('password')) {
         nextErrors.password = msg
       } else if (lower.includes('invalid email/username or password')) {
-        nextErrors.identifier = t('Email/Utilizator sau parola invalide.', 'Invalid Email/Username or Password.')
-        nextErrors.password = t('Email/Utilizator sau parola invalide.', 'Invalid Email/Username or Password.')
+        nextErrors.identifier = t('k_invalid_email_username_or_password', 'Email/Utilizator sau parola invalide.', 'Invalid Email/Username or Password.')
+        nextErrors.password = t('k_invalid_email_username_or_password', 'Email/Utilizator sau parola invalide.', 'Invalid Email/Username or Password.')
       } else {
         nextErrors.general = msg
       }
@@ -736,12 +747,12 @@ export default function App() {
       if (accountEmail) clearDashboardCacheForContext('account', accountEmail)
       if (entryMode === 'anonymous') {
         loadAnonymousConfig()
-        setRunInfo(t('Deconectat. Ruleaza in modul anonim local.', 'Signed out. Running in anonymous local mode.'))
+        setRunInfo(t('k_signed_out_running_in_anonymous_local_mode', 'Deconectat. Ruleaza in modul anonim local.', 'Signed out. Running in anonymous local mode.'))
       } else {
-        setRunInfo(t('Deconectat din contul de utilizator.', 'Signed out from user account.'))
+        setRunInfo(t('k_signed_out_from_user_account', 'Deconectat din contul de utilizator.', 'Signed out from user account.'))
       }
     } catch (e: any) {
-      setError(e?.message ?? t('Deconectarea a esuat.', 'Logout failed.'))
+      setError(e?.message ?? t('k_logout_failed', 'Deconectarea a esuat.', 'Logout failed.'))
     } finally {
       setAuthBusy(false)
       setAuthActionBusy(null)
@@ -785,7 +796,7 @@ export default function App() {
       setAuthFieldErrors({ identifier: '', password: '', general: '' })
 
       if (isAccountMode) {
-        if (!isLoggedIn) throw new Error(t('Autentifica-te pentru a reseta categoriile in modul Cont Utilizator.', 'Please login to reset categories in account mode.'))
+        if (!isLoggedIn) throw new Error(t('k_please_login_to_reset_categories_in_account_mode', 'Autentifica-te pentru a reseta categoriile in modul Cont Utilizator.', 'Please login to reset categories in account mode.'))
         await Promise.all([
           putMyCategories(defaultCategories),
           putMyOverrides(nextOverrides),
@@ -797,9 +808,9 @@ export default function App() {
         saveSettings(nextSettings)
       }
 
-      setRunInfo(t('Categoriile au fost resetate la valorile implicite.', 'Categories reset to default values.'))
+      setRunInfo(t('k_categories_reset_to_default_values', 'Categoriile au fost resetate la valorile implicite.', 'Categories reset to default values.'))
     } catch (e: any) {
-      setError(e?.message ?? t('Resetarea a esuat.', 'Reset failed.'))
+      setError(e?.message ?? t('k_reset_failed', 'Resetarea a esuat.', 'Reset failed.'))
     } finally {
       setLoading(false)
     }
@@ -820,7 +831,7 @@ export default function App() {
       }))
       setTxs(applyCategoryAliases(normalized, categories, aliases))
     } catch (e: any) {
-      setError(e?.message ?? t('Reincarcarea a esuat.', 'Reload failed.'))
+      setError(e?.message ?? t('k_reload_failed', 'Reincarcarea a esuat.', 'Reload failed.'))
     }
   }
 
@@ -844,7 +855,7 @@ export default function App() {
       }
       setIsReloadingView(false)
       if (reloadOk) {
-        setRunInfo(t('Gata. Dashboard-ul a fost reincarcat cu succes.', 'Done. Dashboard reloaded successfully.'))
+        setRunInfo(t('k_done_dashboard_reloaded_successfully', 'Gata. Dashboard-ul a fost reincarcat cu succes.', 'Done. Dashboard reloaded successfully.'))
       }
     }
   }
@@ -854,7 +865,7 @@ export default function App() {
     try {
       await saveSettingsByMode(next)
     } catch (e: any) {
-      setError(e?.message ?? t('Salvarea setarilor a esuat.', 'Save settings failed.'))
+      setError(e?.message ?? t('k_save_settings_failed', 'Salvarea setarilor a esuat.', 'Save settings failed.'))
       throw e
     }
   }
@@ -929,7 +940,7 @@ export default function App() {
       try {
         await loadUserConfig()
       } catch (e: any) {
-        setError(e?.message ?? t('Incarcarea datelor contului a esuat.', 'Failed to load account data.'))
+        setError(e?.message ?? t('k_failed_to_load_account_data', 'Incarcarea datelor contului a esuat.', 'Failed to load account data.'))
       }
         }
     setModeSwitchingTo(null)
@@ -938,7 +949,7 @@ export default function App() {
   if (entryMode === 'landing') {
     return (
       <div id="page-landing" style={{ fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding: 16, width: '100%', maxWidth: 1200, margin: '0 auto', minHeight: '98dvh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflowX: 'clip' }}>
-        <header style={{ width: '100%', boxSizing: 'border-box', background: '#1e3a8a', padding: '10px 14px', borderRadius: 12 }}>
+        <header style={{ width: '100%', boxSizing: 'border-box', background: '#000', padding: '10px 14px', borderRadius: 12 }}>
           <h1
             style={{
               margin: 0,
@@ -991,7 +1002,7 @@ export default function App() {
               onClick={() => {}}
               style={{ border: 'none', background: 'transparent', color: '#0f172a', fontWeight: 600, padding: 0 }}
             >
-              {t('Selectare Mod', 'Mode Selection')}
+              {t('k_mode_selection', 'Selectare Mod', 'Mode Selection')}
             </button>
           </nav>
           <select
@@ -1019,13 +1030,13 @@ export default function App() {
             }}
           >
             <span className="reload-spin" style={{ fontSize: 28, lineHeight: 1 }}>{'\u21bb'}</span>
-            <span style={{ fontSize: 13, color: '#475569' }}>{t('Se aplica limba selectata...', 'Applying selected language...')}</span>
+            <span style={{ fontSize: 13, color: '#475569' }}>{t('k_applying_selected_language', 'Se aplica limba selectata...', 'Applying selected language...')}</span>
           </section>
         ) : (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginTop: 14 }}>
                 <div id="card-landing-anonymous" style={{ border: '1px solid #d9e2ec', borderRadius: 12, padding: 12, background: '#ffffff' }}>
-                  <h3 style={{ marginTop: 0, marginBottom: 8 }}>{t('Anonim', 'Anonymous')}</h3>
+                  <h3 style={{ marginTop: 0, marginBottom: 8 }}>{t('k_anonymous', 'Anonim', 'Anonymous')}</h3>
                   <p style={{ marginTop: 0, color: '#475569', fontSize: 13 }}>
                     {t(
                       'Functioneaza imediat fara cont. Categoriile si override-urile se salveaza local, doar in acest browser/dispozitiv.',
@@ -1037,7 +1048,7 @@ export default function App() {
                     className="app-btn"
                     onClick={() => { void onSelectMode('anonymous') }}
                     disabled={!!modeSwitchingTo}
-                    title={modeSwitchingTo ? t('Incarcare...', 'Loading...') : undefined}
+                    title={modeSwitchingTo ? t('k_loading', 'Incarcare...', 'Loading...') : undefined}
                     style={{
                       padding: '8px 12px',
                       borderRadius: 10,
@@ -1051,11 +1062,11 @@ export default function App() {
                       opacity: modeSwitchingTo ? 0.95 : 1,
                     }}
                   >
-                    {t('Continua ca Anonim', 'Continue as Anonymous')}
+                    {t('k_continue_as_anonymous', 'Continua ca Anonim', 'Continue as Anonymous')}
                   </button>
                 </div>
                 <div id="card-landing-account" style={{ border: '1px solid #d9e2ec', borderRadius: 12, padding: 12, background: '#ffffff' }}>
-                  <h3 style={{ marginTop: 0, marginBottom: 8 }}>{t('Cont Utilizator', 'User Account')}</h3>
+                  <h3 style={{ marginTop: 0, marginBottom: 8 }}>{t('k_user_account', 'Cont Utilizator', 'User Account')}</h3>
                   <p style={{ marginTop: 0, color: '#475569', fontSize: 13 }}>
                     {t(
                       'Autentifica-te pentru a salva categoriile si override-urile per cont in baza de date, sincronizate intre sesiuni.',
@@ -1067,7 +1078,7 @@ export default function App() {
                     className="app-btn"
                     onClick={() => { void onSelectMode('account') }}
                     disabled={!!modeSwitchingTo}
-                    title={modeSwitchingTo ? t('Incarcare...', 'Loading...') : undefined}
+                    title={modeSwitchingTo ? t('k_loading', 'Incarcare...', 'Loading...') : undefined}
                     style={{
                       padding: '8px 12px',
                       borderRadius: 10,
@@ -1081,7 +1092,7 @@ export default function App() {
                       opacity: modeSwitchingTo ? 0.95 : 1,
                     }}
                   >
-                    {t('Continua cu Cont Utilizator', 'Continue with User Account')}
+                    {t('k_continue_with_user_account', 'Continua cu Cont Utilizator', 'Continue with User Account')}
                   </button>
                 </div>
               </div>
@@ -1099,7 +1110,7 @@ export default function App() {
 
   return (
     <div id="page-main" style={{ fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', padding: 16, width: '100%', maxWidth: 1200, margin: '0 auto', minHeight: '98dvh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflowX: 'clip' }}>
-      <header style={{ width: '100%', boxSizing: 'border-box', background: '#1e3a8a', padding: '10px 14px', borderRadius: 12, display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+      <header style={{ width: '100%', boxSizing: 'border-box', background: '#000', padding: '10px 14px', borderRadius: 12, display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h1
             style={{
@@ -1154,20 +1165,20 @@ export default function App() {
             onClick={() => { setEntryMode('landing') }}
             style={{ border: 'none', background: 'transparent', color: '#0f172a', fontWeight: 600, padding: 0 }}
           >
-            {t('Selectare Mod', 'Mode Selection')}
+            {t('k_mode_selection', 'Selectare Mod', 'Mode Selection')}
           </button>
           {entryMode === 'anonymous' && (
             <>
               <span style={{ color: '#94a3b8' }}>{'>'}</span>
-              <span>{t('Anonim', 'Anonymous')}</span>
+              <span>{t('k_anonymous', 'Anonim', 'Anonymous')}</span>
               <span style={{ color: '#94a3b8' }}>{'>'}</span>
-              <span>{t('Dashboard', 'Dashboard')}</span>
+              <span>{t('k_dashboard', 'Dashboard', 'Dashboard')}</span>
             </>
           )}
           {entryMode === 'account' && !isLoggedIn && (
             <>
               <span style={{ color: '#94a3b8' }}>{'>'}</span>
-              <span>{t('Autentificare utilizator', 'User Login')}</span>
+              <span>{t('k_user_login', 'Autentificare utilizator', 'User Login')}</span>
             </>
           )}
           {entryMode === 'account' && isLoggedIn && (
@@ -1175,22 +1186,22 @@ export default function App() {
               <span style={{ color: '#94a3b8' }}>{'>'}</span>
               <span>{t(`Cont Utilizator (${userEmail})`, `User Account (${userEmail})`)}</span>
               <span style={{ color: '#94a3b8' }}>{'>'}</span>
-              <span>{t('Dashboard', 'Dashboard')}</span>
+              <span>{t('k_dashboard', 'Dashboard', 'Dashboard')}</span>
             </>
           )}
         </nav>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flex: '1 1 auto', minWidth: 0 }}>
           {entryMode !== 'anonymous' && authLoading ? (
-            <div style={{ fontSize: 12, color: '#475569' }}>{t('Verific sesiunea...', 'Checking session...')}</div>
+            <div style={{ fontSize: 12, color: '#475569' }}>{t('k_checking_session', 'Verific sesiunea...', 'Checking session...')}</div>
           ) : isLoggedIn ? (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12, color: '#1e293b' }}>{t('Conectat: ', 'Signed in: ')}{userEmail}</span>
+              <span style={{ fontSize: 12, color: '#1e293b' }}>{t('k_signed_in', 'Conectat: ', 'Signed in: ')}{userEmail}</span>
                                           <button
                 id="btn-auth-logout"
                 className="app-btn"
                 onClick={onLogout}
                 disabled={authBusy || loading}
-                title={authActionBusy === 'logout' ? t('Incarcare...', 'Loading...') : undefined}
+                title={authActionBusy === 'logout' ? t('k_loading', 'Incarcare...', 'Loading...') : undefined}
                 style={{
                   padding: '6px 10px',
                   borderRadius: 10,
@@ -1203,7 +1214,7 @@ export default function App() {
                   gap: 6,
                 }}
               >
-                {t('Deconectare', 'Logout')}
+                {t('k_logout', 'Deconectare', 'Logout')}
               </button>
               <div style={{ width: 1, height: 20, background: '#dbe4ef' }} />
               <select
@@ -1244,7 +1255,7 @@ export default function App() {
             padding: 0,
           }}
         >
-          <h3 style={{ marginTop: 0, marginBottom: 10, textAlign: 'center' }}>{t('Login / Inregistrare', 'Login / Register')}</h3>
+          <h3 style={{ marginTop: 0, marginBottom: 10, textAlign: 'center' }}>{t('k_login_register', 'Login / Inregistrare', 'Login / Register')}</h3>
           <div style={{ display: 'grid', gap: 8 }}>
             <input
               value={authIdentifier}
@@ -1252,7 +1263,7 @@ export default function App() {
                 setAuthIdentifier(e.target.value)
                 setAuthFieldErrors(prev => ({ ...prev, identifier: '', general: '' }))
               }}
-              placeholder={t('Email / Utilizator', 'Email / Username')}
+              placeholder={t('k_email_username', 'Email / Utilizator', 'Email / Username')}
               type="text"
               style={{ height: 40, padding: '0 10px', borderRadius: 10, border: `1px solid ${authFieldErrors.identifier ? '#dc2626' : '#bbb'}`, width: '100%', boxSizing: 'border-box' }}
             />
@@ -1263,7 +1274,7 @@ export default function App() {
                   setAuthPassword(e.target.value)
                   setAuthFieldErrors(prev => ({ ...prev, password: '', general: '' }))
                 }}
-                placeholder={t('Parola', 'Password')}
+                placeholder={t('k_password', 'Parola', 'Password')}
                 type={showAuthPassword ? 'text' : 'password'}
                 style={{ height: 40, padding: '0 34px 0 10px', borderRadius: 10, border: `1px solid ${authFieldErrors.password ? '#dc2626' : '#bbb'}`, width: '100%', boxSizing: 'border-box' }}
               />
@@ -1272,7 +1283,7 @@ export default function App() {
                 type="button"
                 className="app-btn"
                 onClick={() => setShowAuthPassword(v => !v)}
-                title={showAuthPassword ? t('Ascunde parola', 'Hide password') : t('Arata parola', 'Show password')}
+                title={showAuthPassword ? t('k_hide_password', 'Ascunde parola', 'Hide password') : t('k_show_password', 'Arata parola', 'Show password')}
                 style={{
                   position: 'absolute',
                   right: 8,
@@ -1313,7 +1324,7 @@ export default function App() {
                 className="app-btn"
                 onClick={() => handleAuthAction('login')}
                 disabled={authBusy || loading}
-                title={authActionBusy === 'login' ? t('Incarcare...', 'Loading...') : undefined}
+                title={authActionBusy === 'login' ? t('k_loading', 'Incarcare...', 'Loading...') : undefined}
                 style={{
                   width: 120,
                   height: 38,
@@ -1325,14 +1336,14 @@ export default function App() {
                   fontWeight: 600,
                 }}
               >
-                {t('Autentificare', 'Login')}
+                {t('k_login', 'Autentificare', 'Login')}
               </button>
                                           <button
                 id="btn-auth-register"
                 className="app-btn"
                 onClick={() => handleAuthAction('register')}
                 disabled={authBusy || loading}
-                title={authActionBusy === 'register' ? t('Incarcare...', 'Loading...') : undefined}
+                title={authActionBusy === 'register' ? t('k_loading', 'Incarcare...', 'Loading...') : undefined}
                 style={{
                   width: 120,
                   height: 38,
@@ -1344,7 +1355,7 @@ export default function App() {
                   fontWeight: 600,
                 }}
               >
-                {t('Inregistrare', 'Register')}
+                {t('k_register', 'Inregistrare', 'Register')}
               </button>
             </div>
           </div>
@@ -1367,7 +1378,7 @@ export default function App() {
               }}
             >
               <span className="reload-spin" style={{ fontSize: 28, lineHeight: 1 }}>{'\u21bb'}</span>
-              <span style={{ fontSize: 13, color: '#475569' }}>{t('Se aplica limba selectata...', 'Applying selected language...')}</span>
+              <span style={{ fontSize: 13, color: '#475569' }}>{t('k_applying_selected_language', 'Se aplica limba selectata...', 'Applying selected language...')}</span>
             </section>
           ) : (
             <>
@@ -1398,24 +1409,20 @@ export default function App() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 8,
+                  gap: 2,
                 }}
               >
                 {isBuildingDashboard ? (
                   <>
                     <span className="reload-spin" style={{ fontSize: 14, lineHeight: 1 }}>{'\u21bb'}</span>
-                    <span>{t('Creare dashboard...', 'Building dashboard...')}</span>
+                    <span style={{ marginLeft: 4 }}>{t('k_building_dashboard', 'Creare dashboard...', 'Building dashboard...')}</span>
                   </>
                 ) : (
                   isAccountMode && !isLoggedIn
-                    ? t('Login necesar pentru modul de cont', 'Login Required for Account Mode')
+                    ? t('k_login_required_for_account_mode', 'Login necesar pentru modul de cont', 'Login Required for Account Mode')
                     : (
                       <>
-                        <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" fill="none" stroke="currentColor" strokeWidth="2" />
-                          <path d="M14 3v6h6" fill="none" stroke="currentColor" strokeWidth="2" />
-                        </svg>
-                        <span>{t('Importa extras bancar', 'Import Bank Statement')}</span>
+                        <span>{t('k_import_bank_statement', 'Importa extras bancar', 'Import Bank Statement')}</span>
                       </>
                     )
                 )}
@@ -1425,7 +1432,7 @@ export default function App() {
                 className="app-btn"
                 onClick={() => { void onResetDashboardView() }}
                 disabled={!canUseDashboard || txs.length === 0 || !canReloadView || loading || isReloadingView}
-                title={t('Reincarca vizualizarea', 'Reload View')}
+                title={t('k_reload_view', 'Reincarca vizualizarea', 'Reload View')}
                 style={{
                   width: 36,
                   height: 36,
@@ -1494,8 +1501,9 @@ export default function App() {
                       justifyContent: 'center',
                       flexShrink: 0,
                       pointerEvents: noticeText ? 'auto' : 'none',
+                      visibility: noticeText ? 'visible' : 'hidden',
                     }}
-                    title={t('Inchide notificarea', 'Close notification')}
+                    title={t('k_close_notification', 'Inchide notificarea', 'Close notification')}
                   >
                     x
                   </button>
@@ -1543,4 +1551,30 @@ export default function App() {
     </div>
   )
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

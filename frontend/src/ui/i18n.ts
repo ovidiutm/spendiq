@@ -1,4 +1,4 @@
-export type Language = 'en' | 'ro' | 'fr' | 'it' | 'de'
+﻿export type Language = 'en' | 'ro' | 'fr' | 'it' | 'de'
 
 export function normalizeLanguage(raw: string | null | undefined): Language {
   switch (String(raw ?? '').toLowerCase()) {
@@ -421,6 +421,17 @@ export function translate(language: Language, ro: string, en: string): string {
   return en
 }
 
+// Transitional key-based API: keeps compatibility while migrating away from inline text pairs.
+const TRANSITIONAL_KEY_REGISTRY: Record<string, { ro: string; en: string }> = {}
+
+export function translateWithKey(language: Language, key: string, ro: string, en: string): string {
+  const existing = TRANSITIONAL_KEY_REGISTRY[key]
+  if (!existing) {
+    TRANSITIONAL_KEY_REGISTRY[key] = { ro, en }
+  }
+  const pair = TRANSITIONAL_KEY_REGISTRY[key] ?? { ro, en }
+  return translate(language, pair.ro, pair.en)
+}
 export const LANGUAGE_OPTIONS: Array<{ value: Language; label: string }> = [
   { value: 'en', label: 'English' },
   { value: 'ro', label: 'Romana' },
@@ -428,3 +439,4 @@ export const LANGUAGE_OPTIONS: Array<{ value: Language; label: string }> = [
   { value: 'it', label: 'Italiano' },
   { value: 'de', label: 'Deutsch' },
 ]
+
