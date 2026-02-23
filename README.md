@@ -51,11 +51,17 @@ If you want to replicate the same hosting setup, see:
 - Two usage modes:
   - Anonymous mode (local browser persistence).
   - User account mode (PostgreSQL persistence per user).
-- Bilingual UI: Romanian / English.
+- Multilingual UI: Romanian / English / French / Italian / German.
 
 ## Main Features
 - Statement parsing endpoint: `POST /api/parse/statement`
 - Categorization endpoint: `POST /api/categorize`
+- Cookie consent controls (necessary / preferences / performance) with explicit accept/reject/customize flow
+- Authentication and account modes:
+  - Anonymous mode (local browser persistence)
+  - User account mode (cookie session + PostgreSQL persistence)
+  - Email registration with 6-digit verification PIN
+  - Social login (Google / Facebook / Apple) implemented and controlled by frontend feature flags
 - Category management: add / rename / delete
 - Category override strategies:
   - Merchant + Type
@@ -68,13 +74,13 @@ If you want to replicate the same hosting setup, see:
 - Savings accounts:
   - Add multiple IBANs
   - Savings in / out / net calculations and summaries
-- CSV export for filtered transaction data
+- CSV export for filtered transaction data (Save As dialog when browser supports File System Access API, fallback download otherwise)
 
 ## Tech Stack
 - Frontend: React + TypeScript + Vite + ECharts
 - Backend: FastAPI + SQLAlchemy
 - Database: PostgreSQL
-- Auth: cookie-based session auth
+- Auth: cookie-based session auth (username or email)
 - Infra: Docker Compose
 
 ## Quick Start (Docker)
@@ -112,6 +118,8 @@ npm run dev
 ```
 
 ## Environment Variables
+
+### Core
 | Variable | Required | Example | Scope |
 |---|---|---|---|
 | `VITE_API_BASE` | Yes (for hosted frontend) | `https://your-backend-url` | Frontend API base |
@@ -119,14 +127,61 @@ npm run dev
 | `CORS_ALLOW_ORIGINS` | Yes (production) | `https://ovidiutm.github.io` | Backend CORS |
 | `COOKIE_SECURE` | Yes (production) | `true` | Backend session cookie |
 | `COOKIE_SAMESITE` | Yes (cross-site) | `none` | Backend session cookie |
+| `SESSION_TTL_DAYS` | No | `30` | Backend session lifetime |
+
+### OAuth / Social Login (optional)
+| Variable | Required | Example | Scope |
+|---|---|---|---|
+| `PUBLIC_BACKEND_URL` | Yes (OAuth in production) | `https://your-backend.onrender.com` | Backend callback URL generation |
+| `FRONTEND_BASE_URL` | Yes (OAuth) | `https://ovidiutm.github.io/spendiq` | OAuth return URL fallback |
+| `OAUTH_ALLOWED_RETURN_ORIGINS` | Yes (OAuth production) | `https://ovidiutm.github.io` | Allowed frontend origins for OAuth return |
+| `OAUTH_GOOGLE_CLIENT_ID` | Optional | `...` | Google OAuth |
+| `OAUTH_GOOGLE_CLIENT_SECRET` | Optional | `...` | Google OAuth |
+| `OAUTH_FACEBOOK_CLIENT_ID` | Optional | `...` | Facebook OAuth |
+| `OAUTH_FACEBOOK_CLIENT_SECRET` | Optional | `...` | Facebook OAuth |
+| `OAUTH_APPLE_CLIENT_ID` | Optional | `...` | Apple OAuth |
+| `OAUTH_APPLE_TEAM_ID` | Optional | `...` | Apple OAuth |
+| `OAUTH_APPLE_KEY_ID` | Optional | `...` | Apple OAuth |
+| `OAUTH_APPLE_PRIVATE_KEY` | Optional | `-----BEGIN PRIVATE KEY-----...` | Apple OAuth |
+
+### Email Verification (SMTP, optional but recommended)
+| Variable | Required | Example | Scope |
+|---|---|---|---|
+| `SMTP_HOST` | Optional | `smtp.gmail.com` | Backend email delivery |
+| `SMTP_PORT` | Optional | `587` | Backend email delivery |
+| `SMTP_USER` | Optional | `noreply@example.com` | Backend email delivery |
+| `SMTP_PASSWORD` | Optional | `...` | Backend email delivery |
+| `SMTP_FROM` | Optional | `SpendIQ <noreply@example.com>` | Backend email delivery |
+| `SMTP_USE_TLS` | Optional | `true` | Backend email delivery |
+
+### Feature Flags (frontend)
+| Variable | Default | Example | Scope |
+|---|---|---|---|
+| `VITE_FEATURE_SOCIAL_AUTH` | `false` | `true` | Show/hide social auth section |
+| `VITE_FEATURE_SOCIAL_AUTH_GOOGLE` | `false` | `true` | Google button |
+| `VITE_FEATURE_SOCIAL_AUTH_FACEBOOK` | `false` | `true` | Facebook button |
+| `VITE_FEATURE_SOCIAL_AUTH_APPLE` | `false` | `true` | Apple button |
+
+### Logging (minimal)
+| Variable | Default | Example | Scope |
+|---|---|---|---|
+| `LOG_LEVEL` | `INFO` | `DEBUG` | Backend app log level |
+| `LOG_JSON` | `true` | `false` | Backend app log format (`JSON` for prod, text optional for local debugging) |
 
 ## API Overview
 Auth:
 - `POST /auth/register`
+- `POST /auth/register/verify-email`
 - `POST /auth/login`
 - `POST /auth/logout`
 - `GET /auth/me`
 - `GET /auth/identifier-availability`
+
+OAuth (optional):
+- `GET /auth/oauth/providers`
+- `GET /auth/oauth/{provider}/start`
+- `GET /auth/oauth/{provider}/callback`
+- `POST /auth/oauth/{provider}/callback`
 
 User data:
 - `GET/PUT /api/me/categories`
@@ -137,21 +192,34 @@ User data:
 Parsing and categorization:
 - `POST /api/parse/statement`
 - `POST /api/categorize`
+- `POST /api/ai/categorize` (optional/experimental)
+
 
 ## Persistence Behavior
+Cookie consent affects optional browser storage usage:
+- `Necessary`: required app/session behavior only
+- `Preferences`: local categories/overrides/settings persistence
+- `Performance`: browser dashboard cache persistence
+
 Anonymous mode:
-- Categories, overrides, settings in browser storage
-- Dashboard cache scoped to anonymous context
+- Categories, overrides, settings in browser storage (only if consent allows preferences)
+- Dashboard cache scoped to anonymous context (only if consent allows performance)
 
 User account mode:
 - Categories, overrides, settings stored per user in PostgreSQL
-- Dashboard cache scoped to logged-in account context
+- Dashboard cache scoped to logged-in account context (sessionStorage, only if consent allows performance)
 
 ## Troubleshooting
 - API calls fail on hosted frontend:
   - Verify `VITE_API_BASE` and backend CORS/cookie settings.
 - Login works locally but fails on hosted frontend:
   - Check `COOKIE_SAMESITE=none` and `COOKIE_SECURE=true` on backend.
+- Email registration shows verification message but no email arrives:
+  - SMTP is not configured yet; in local/dev the verification PIN is logged by the backend as a fallback.
+- Social login buttons do not appear:
+  - Enable frontend feature flags (`VITE_FEATURE_SOCIAL_AUTH*`).
+- Social login starts but fails immediately:
+  - Verify OAuth env vars + provider redirect URLs + allowed origins.
 - Routes broken under `/spendiq/...`:
   - Keep Vite base path set to `/spendiq/`.
 
@@ -159,7 +227,7 @@ User account mode:
 - [ ] Broader parser validation on additional bank statement layouts
 - [ ] Optional parser profile detection per bank format
 - [ ] Extended analytics cards and reporting views
-- [ ] Improved test coverage (frontend + backend)
+- [ ] Expand test coverage beyond BVT + parser smoke suites
 - [ ] Better import diagnostics for unsupported statements
 
 ## Contributing

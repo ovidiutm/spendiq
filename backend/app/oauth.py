@@ -15,7 +15,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .models import User, UserCategory, UserOAuthIdentity, UserSession
+from .logging_utils import get_request_id, log_event, mask_email
+from .models import AuditEvent, User, UserCategory, UserOAuthIdentity, UserSession
 
 router = APIRouter(prefix='/auth/oauth', tags=['oauth'])
 
@@ -68,6 +69,32 @@ def _make_session(db: Session, user_id: int) -> UserSession:
     db.commit()
     db.refresh(row)
     return row
+
+
+def _write_oauth_audit_event(
+    db: Session,
+    event: str,
+    *,
+    status: str = 'info',
+    user_id: Optional[int] = None,
+    actor_identifier: Optional[str] = None,
+    details: Optional[dict[str, Any]] = None,
+) -> None:
+    try:
+        row = AuditEvent(
+            user_id=user_id,
+            event=event,
+            status=status,
+            actor_identifier=mask_email(actor_identifier or '') if actor_identifier else '',
+            request_id=(get_request_id() or '')[:64],
+            details_json=json.dumps(details or {}, ensure_ascii=True, default=str),
+        )
+        db.add(row)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        log_event('error', 'oauth.audit_write_failed', error=str(exc), audit_event=event)
+
 
 
 def _set_session_cookie(response: RedirectResponse, token: str) -> None:
@@ -324,9 +351,10 @@ def oauth_providers_status():
 
 
 @router.get('/{provider}/start')
-def oauth_start(provider: str, return_to: Optional[str] = Query(default=None)):
+def oauth_start(provider: str, return_to: Optional[str] = Query(default=None), db: Session = Depends(get_db)):
     cfg = _provider_cfg(provider)
     if not _provider_enabled(cfg):
+        _write_oauth_audit_event(db, 'auth.oauth_start_rejected_provider_not_configured', status='warning', details={'provider': provider})
         raise HTTPException(status_code=503, detail=f'{provider.title()} login is not configured.')
     state = secrets.token_urlsafe(24)
     safe_return_to = _safe_frontend_return_url(return_to)
@@ -348,6 +376,7 @@ def oauth_start(provider: str, return_to: Optional[str] = Query(default=None)):
             'state': state,
         }
     auth_url = f"{cfg['authorize_url']}?{urlencode(params)}"
+    _write_oauth_audit_event(db, 'auth.oauth_start', details={'provider': provider})
     resp = RedirectResponse(auth_url, status_code=302)
     _set_oauth_state_cookie(resp, {'state': state, 'provider': provider, 'return_to': safe_return_to, 'created_at': datetime.now(timezone.utc).isoformat()})
     return resp
@@ -358,14 +387,17 @@ async def _oauth_callback_impl(provider: str, code: Optional[str], state: Option
     state_payload = _read_oauth_state_cookie(oauth_state_cookie)
     safe_return_to = _safe_frontend_return_url((state_payload or {}).get('return_to'))
     if error:
+        _write_oauth_audit_event(db, 'auth.oauth_callback_provider_denied', status='warning', details={'provider': provider, 'error': error})
         resp = _frontend_redirect(safe_return_to, 'error', 'provider_denied', provider)
         _clear_oauth_state_cookie(resp)
         return resp
     if not state_payload or state_payload.get('provider') != provider or not state or state_payload.get('state') != state:
+        _write_oauth_audit_event(db, 'auth.oauth_callback_invalid_state', status='warning', details={'provider': provider})
         resp = _frontend_redirect(safe_return_to, 'error', 'invalid_state', provider)
         _clear_oauth_state_cookie(resp)
         return resp
     if not code:
+        _write_oauth_audit_event(db, 'auth.oauth_callback_missing_code', status='warning', details={'provider': provider})
         resp = _frontend_redirect(safe_return_to, 'error', 'missing_code', provider)
         _clear_oauth_state_cookie(resp)
         return resp
@@ -381,16 +413,19 @@ async def _oauth_callback_impl(provider: str, code: Optional[str], state: Option
             raise HTTPException(status_code=404, detail='OAuth provider not supported.')
 
         user = _upsert_user_from_oauth(db, provider, provider_user_id, email)
+        _write_oauth_audit_event(db, 'auth.oauth_login_success', user_id=user.id, actor_identifier=user.email, details={'provider': provider})
         session = _make_session(db, user.id)
         resp = _frontend_redirect(safe_return_to, 'success', 'login_success', provider)
         _set_session_cookie(resp, session.token)
         _clear_oauth_state_cookie(resp)
         return resp
     except HTTPException as e:
+        _write_oauth_audit_event(db, 'auth.oauth_callback_failed', status='warning', details={'provider': provider, 'detail': str(e.detail)})
         resp = _frontend_redirect(safe_return_to, 'error', 'oauth_failed', provider)
         _clear_oauth_state_cookie(resp)
         return resp
-    except Exception:
+    except Exception as e:
+        _write_oauth_audit_event(db, 'auth.oauth_callback_failed_unhandled', status='error', details={'provider': provider, 'error': str(e)})
         resp = _frontend_redirect(safe_return_to, 'error', 'oauth_failed', provider)
         _clear_oauth_state_cookie(resp)
         return resp

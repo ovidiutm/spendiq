@@ -2,6 +2,8 @@ import os
 import smtplib
 from email.message import EmailMessage
 
+from .logging_utils import log_event, mask_email
+
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "").strip()
@@ -23,7 +25,7 @@ def send_email_verification_code(email: str, code: str) -> str:
     )
 
     if not smtp_configured():
-        print(f"[EMAIL-VERIFY][DEV-FALLBACK] to={email} code={code}")
+        log_event('warning', 'email_verify.dev_fallback_code_generated', email=mask_email(email), verification_code=code)
         return "debug_console"
 
     msg = EmailMessage()
@@ -38,4 +40,5 @@ def send_email_verification_code(email: str, code: str) -> str:
         if SMTP_USER:
             smtp.login(SMTP_USER, SMTP_PASSWORD)
         smtp.send_message(msg)
+    log_event('info', 'email_verify.smtp_sent', email=mask_email(email))
     return "smtp"
