@@ -1,12 +1,14 @@
-﻿import React, { useRef, useState, useEffect } from 'react'
+﻿import React, { Suspense, useRef, useState, useEffect } from 'react'
 import {
   parseStatement,
   categorize,
   authMe,
   authLogin,
   authRegister,
+  authVerifyEmailRegistration,
   checkIdentifierAvailability,
   authLogout,
+  getOAuthStartUrl,
   getMyCategories,
   putMyCategories,
   getMyOverrides,
@@ -16,8 +18,11 @@ import {
 } from './api'
 import type { StatementDetails, Transaction } from './types'
 import { loadOverrides, saveOverrides, loadCategories, saveCategories, loadSettings, saveSettings } from './storage'
-import Dashboard from './Dashboard'
-import { LANGUAGE_OPTIONS, normalizeLanguage, translateWithKey, type Language } from './i18n'
+const Dashboard = React.lazy(() => import('./Dashboard'))
+import CookieConsentPanel from './CookieConsentPanel'
+import { LANGUAGE_OPTIONS, normalizeLanguage, translateKey, translateKeyFormat, type Language } from './i18n'
+import { isSocialProviderEnabled } from './featureFlags'
+import { canUsePerformanceStorage, clearOptionalBrowserStorageByConsent, getEffectiveCookieConsent, hasStoredCookieConsent, saveCookieConsent, type CookieConsent } from './consent'
 
 const DEFAULT_CATEGORIES = [
   'Groceries','Restaurants','Transport','Transport/Fuel','Utilities','Internet/Phone','Shopping',
@@ -84,6 +89,7 @@ function loadDashboardCacheForContext(mode: 'anonymous' | 'account', userEmail: 
   txs: Transaction[]
   statementDetails: StatementDetails | null
 } {
+  if (!canUsePerformanceStorage()) return { txs: [], statementDetails: null }
   try {
     const txRaw = sessionStorage.getItem(getDashboardCacheKey(mode, userEmail))
     const detailsRaw = sessionStorage.getItem(getStatementDetailsCacheKey(mode, userEmail))
@@ -128,6 +134,7 @@ function saveDashboardCacheForContext(
   txs: Transaction[],
   statementDetails: StatementDetails | null
 ): void {
+  if (!canUsePerformanceStorage()) return
   try {
     sessionStorage.setItem(getDashboardCacheKey(mode, userEmail), JSON.stringify(txs))
     if (statementDetails) {
@@ -141,6 +148,7 @@ function saveDashboardCacheForContext(
 }
 
 function clearDashboardCacheForContext(mode: 'anonymous' | 'account', userEmail: string | null): void {
+  if (!canUsePerformanceStorage()) return
   try {
     sessionStorage.removeItem(getDashboardCacheKey(mode, userEmail))
     sessionStorage.removeItem(getStatementDetailsCacheKey(mode, userEmail))
@@ -242,11 +250,13 @@ export default function App() {
 
   const [authLoading, setAuthLoading] = useState(true)
   const [authBusy, setAuthBusy] = useState(false)
-  const [authActionBusy, setAuthActionBusy] = useState<'login' | 'register' | 'logout' | null>(null)
+  const [authActionBusy, setAuthActionBusy] = useState<'login' | 'register' | 'logout' | 'verify_email' | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [authIdentifier, setAuthIdentifier] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [showAuthPassword, setShowAuthPassword] = useState(false)
+  const [authEmailVerificationPendingIdentifier, setAuthEmailVerificationPendingIdentifier] = useState<string | null>(null)
+  const [authEmailVerificationCode, setAuthEmailVerificationCode] = useState('')
   const [authFieldErrors, setAuthFieldErrors] = useState<{ identifier: string; password: string; general: string }>({
     identifier: '',
     password: '',
@@ -270,9 +280,60 @@ export default function App() {
     )
   )
 
-  const t = (keyOrRo: string, roOrEn: string, enMaybe?: string) => enMaybe === undefined
-    ? translateWithKey(language, roOrEn, keyOrRo, roOrEn)
-    : translateWithKey(language, keyOrRo, roOrEn, enMaybe)
+  const [cookieConsent, setCookieConsent] = useState<CookieConsent>(() => getEffectiveCookieConsent())
+  const [showCookieBanner, setShowCookieBanner] = useState<boolean>(() => !hasStoredCookieConsent())
+  const [cookieModalOpen, setCookieModalOpen] = useState(false)
+  const [cookieConsentDraft, setCookieConsentDraft] = useState<Pick<CookieConsent, 'preferences' | 'performance'>>(() => {
+    const c = getEffectiveCookieConsent()
+    return { preferences: c.preferences, performance: c.performance }
+  })
+
+  const t = (key: string) => translateKey(language, key)
+  const tf = (key: string, values?: Record<string, string | number>) => translateKeyFormat(language, key, values)
+  const socialLoginGoogleEnabled = isSocialProviderEnabled('google')
+  const socialLoginFacebookEnabled = isSocialProviderEnabled('facebook')
+  const socialLoginAppleEnabled = isSocialProviderEnabled('apple')
+  const showSocialLoginOptions = socialLoginGoogleEnabled || socialLoginFacebookEnabled || socialLoginAppleEnabled
+
+  const applyCookieConsentSelection = (nextDraft: Pick<CookieConsent, 'preferences' | 'performance'>) => {
+    const saved = saveCookieConsent(nextDraft)
+    setCookieConsent(saved)
+    setCookieConsentDraft({ preferences: saved.preferences, performance: saved.performance })
+    setShowCookieBanner(false)
+    setCookieModalOpen(false)
+    clearOptionalBrowserStorageByConsent(saved)
+
+    if (!saved.preferences) {
+      setOverrides({})
+      setCategories(defaultCategories)
+      setSettings(prev => ({ ...prev, [SETTINGS_KEY_LANGUAGE]: language }))
+      setSavingsAccounts([])
+    }
+
+    if (!saved.performance) {
+      if (canUseDashboard) {
+        setTxs([])
+        setStatementDetails(null)
+      setAuthEmailVerificationPendingIdentifier(null)
+      setAuthEmailVerificationCode('')
+      }
+      return
+    }
+
+    if (entryMode === 'anonymous') {
+      const cached = loadDashboardCacheForContext('anonymous', null)
+      if (cached.txs.length) {
+        setTxs(cached.txs)
+        setStatementDetails(cached.statementDetails)
+      }
+    } else if (entryMode === 'account' && isLoggedIn) {
+      const cached = loadDashboardCacheForContext('account', userEmail)
+      if (cached.txs.length) {
+        setTxs(cached.txs)
+        setStatementDetails(cached.statementDetails)
+      }
+    }
+  }
 
   const isLoggedIn = !!userEmail
   const isAccountMode = entryMode === 'account'
@@ -301,7 +362,7 @@ export default function App() {
 
   const saveOverridesByMode = async (next: Record<string, string>) => {
     if (isAccountMode) {
-      if (!isLoggedIn) throw new Error(t('k_please_login_to_save_account_data', 'Autentifica-te pentru a salva datele contului.', 'Please login to save account data.'))
+      if (!isLoggedIn) throw new Error(t('k_please_login_to_save_account_data'))
       await putMyOverrides(next)
       return
     }
@@ -310,7 +371,7 @@ export default function App() {
 
   const saveCategoriesByMode = async (next: string[]) => {
     if (isAccountMode) {
-      if (!isLoggedIn) throw new Error(t('k_please_login_to_save_account_data', 'Autentifica-te pentru a salva datele contului.', 'Please login to save account data.'))
+      if (!isLoggedIn) throw new Error(t('k_please_login_to_save_account_data'))
       await putMyCategories(next)
       return
     }
@@ -361,6 +422,10 @@ export default function App() {
   }
 
   useEffect(() => {
+    setCookieConsentDraft({ preferences: cookieConsent.preferences, performance: cookieConsent.performance })
+  }, [cookieConsent])
+
+  useEffect(() => {
     let alive = true
     ;(async () => {
       setAuthLoading(true)
@@ -392,6 +457,45 @@ export default function App() {
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const oauthStatus = params.get('oauth_status')
+    const oauthCode = params.get('oauth_code')
+    if (!oauthStatus) return
+
+    if (oauthStatus === 'success') {
+      setRunInfo(null)
+      setError(null)
+      setAuthFieldErrors(prev => ({ ...prev, general: '' }))
+      ;(async () => {
+        try {
+          const me = await authMe()
+          if (me.authenticated && me.email) {
+            setUserEmail(me.email)
+            await loadUserConfig()
+          }
+        } catch {
+          // ignore and let existing auth bootstrap handle fallback
+        }
+      })()
+    } else if (oauthStatus === 'error') {
+      const errorMap: Record<string, string> = {
+        provider_denied: t('k_oauth_provider_denied'),
+        invalid_state: t('k_oauth_invalid_state'),
+        missing_code: t('k_oauth_missing_code'),
+        oauth_failed: t('k_oauth_failed'),
+        provider_not_configured: t('k_oauth_provider_not_configured'),
+      }
+      setAuthFieldErrors(prev => ({ ...prev, general: errorMap[String(oauthCode || '')] || t('k_oauth_failed') }))
+    }
+
+    params.delete('oauth_status')
+    params.delete('oauth_code')
+    params.delete('oauth_provider')
+    const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash || ''}`
+    window.history.replaceState(window.history.state, '', next)
+  }, [language])
 
   useEffect(() => {
     const targetPath = pathForMode(entryMode, isLoggedIn)
@@ -480,14 +584,9 @@ export default function App() {
       setStatementDetails(parsed.statementDetails ?? null)
       const durationMs = Math.round(performance.now() - startedAt)
       const durationSec = (durationMs / 1000).toFixed(2)
-      setRunInfo(
-        t(
-          `Gata. "${selectedFile.name}" procesat in ${durationSec}s (${categorized.length} tranzactii).`,
-          `Done. "${selectedFile.name}" processed in ${durationSec}s (${categorized.length} transactions).`
-        )
-      )
+      setRunInfo(tf('k_done_statement_processed', { file: selectedFile.name, duration: durationSec, count: categorized.length }))
     } catch (e: any) {
-      setError(e?.message ?? t('k_unknown_error', 'Eroare necunoscuta', 'Unknown error'))
+      setError(e?.message ?? t('k_unknown_error'))
     } finally {
       setLoading(false)
       setIsBuildingDashboard(false)
@@ -508,7 +607,7 @@ export default function App() {
 
   const onChooseAndBuild = () => {
     if (isAccountMode && !isLoggedIn) {
-      setAuthFieldErrors(prev => ({ ...prev, general: t('k_please_login_first_to_use_user_account_mode', 'Autentifica-te mai intai pentru a folosi modul Cont Utilizator.', 'Please login first to use User Account mode.') }))
+      setAuthFieldErrors(prev => ({ ...prev, general: t('k_please_login_first_to_use_user_account_mode') }))
       return
     }
     fileInputRef.current?.click()
@@ -535,7 +634,7 @@ export default function App() {
       await saveOverridesByMode(next)
       await recategorizeCurrent(next)
     } catch (e: any) {
-      setError(e?.message ?? t('k_unknown_error', 'Eroare necunoscuta', 'Unknown error'))
+      setError(e?.message ?? t('k_unknown_error'))
     } finally {
       setLoading(false)
     }
@@ -549,7 +648,7 @@ export default function App() {
       await saveOverridesByMode(next)
       await recategorizeCurrent(next)
     } catch (e: any) {
-      setError(e?.message ?? t('k_unknown_error', 'Eroare necunoscuta', 'Unknown error'))
+      setError(e?.message ?? t('k_unknown_error'))
     } finally {
       setLoading(false)
     }
@@ -566,7 +665,7 @@ export default function App() {
     try {
       await saveCategoriesByMode(next)
     } catch (e: any) {
-      setError(e?.message ?? t('k_unknown_error', 'Eroare necunoscuta', 'Unknown error'))
+      setError(e?.message ?? t('k_unknown_error'))
     }
   }
 
@@ -618,7 +717,7 @@ export default function App() {
       }))
       setTxs(applyCategoryAliases(normalized, nextCategories, aliases))
     } catch (e: any) {
-      setError(e?.message ?? t('k_unknown_error', 'Eroare necunoscuta', 'Unknown error'))
+      setError(e?.message ?? t('k_unknown_error'))
     }
   }
 
@@ -671,7 +770,7 @@ export default function App() {
       }))
       setTxs(applyCategoryAliases(normalized, nextCategories, aliases))
     } catch (e: any) {
-      setError(e?.message ?? t('k_unknown_error', 'Eroare necunoscuta', 'Unknown error'))
+      setError(e?.message ?? t('k_unknown_error'))
     }
   }
 
@@ -684,8 +783,8 @@ export default function App() {
       const payload = { identifier: authIdentifier.trim(), password: authPassword }
       if (!payload.identifier || !payload.password) {
         setAuthFieldErrors({
-          identifier: payload.identifier ? '' : t('k_email_username_is_required', 'Email/Utilizator este obligatoriu.', 'Email/Username is required.'),
-          password: payload.password ? '' : t('k_password_is_required', 'Parola este obligatorie.', 'Password is required.'),
+          identifier: payload.identifier ? '' : t('k_email_username_is_required'),
+          password: payload.password ? '' : t('k_password_is_required'),
           general: '',
         })
         return
@@ -694,41 +793,97 @@ export default function App() {
         const available = await checkIdentifierAvailability(payload.identifier)
         if (!available) {
           setAuthFieldErrors({
-            identifier: t('k_this_email_username_is_already_used', 'Acest Email/Utilizator este deja folosit.', 'This Email/Username is already used.'),
+            identifier: t('k_this_email_username_is_already_used'),
             password: '',
             general: '',
           })
           return
         }
       }
-      const res = mode === 'login' ? await authLogin(payload) : await authRegister(payload)
-      if (!res.authenticated || !res.email) {
-        throw new Error(t('k_authentication_failed', 'Autentificarea a esuat.', 'Authentication failed.'))
+      if (mode === 'register') {
+        const registerRes = await authRegister(payload)
+        if (registerRes.verification_required) {
+          setAuthEmailVerificationPendingIdentifier(registerRes.email || payload.identifier)
+          setAuthEmailVerificationCode('')
+          setAuthFieldErrors(prev => ({ ...prev, general: registerRes.message || t('k_email_verification_code_sent') }))
+          setAuthPassword('')
+          return
+        }
+        if (!registerRes.authenticated || !registerRes.email) {
+          throw new Error(t('k_authentication_failed'))
+        }
+        await loadUserConfig()
+        setUserEmail(registerRes.email)
+      } else {
+        const loginRes = await authLogin(payload)
+        if (!loginRes.authenticated || !loginRes.email) {
+          throw new Error(t('k_authentication_failed'))
+        }
+        await loadUserConfig()
+        setUserEmail(loginRes.email)
       }
-      await loadUserConfig()
-      setUserEmail(res.email)
       setRunInfo(null)
       setAuthPassword('')
+      setAuthEmailVerificationPendingIdentifier(null)
+      setAuthEmailVerificationCode('')
     } catch (e: any) {
       setUserEmail(null)
-      const msg = String(e?.message ?? t('k_authentication_failed', 'Autentificarea a esuat.', 'Authentication failed.'))
+      const msg = String(e?.message ?? t('k_authentication_failed'))
       const lower = msg.toLowerCase()
       const nextErrors = { ...emptyErrors }
       if (lower.includes('identifier already registered')) {
-        nextErrors.identifier = t('k_this_email_username_is_already_used', 'Acest Email/Utilizator este deja folosit.', 'This Email/Username is already used.')
+        nextErrors.identifier = t('k_this_email_username_is_already_used')
       } else if (lower.includes('identifier is required')) {
-        nextErrors.identifier = t('k_email_username_is_required', 'Email/Utilizator este obligatoriu.', 'Email/Username is required.')
+        nextErrors.identifier = t('k_email_username_is_required')
       } else if (lower.includes('at least 8 characters')) {
-        nextErrors.password = t('k_password_should_have_at_least_8_characters', 'Parola trebuie sa aiba cel putin 8 caractere.', 'Password should have at least 8 characters')
+        nextErrors.password = t('k_password_should_have_at_least_8_characters')
       } else if (lower.includes('password')) {
         nextErrors.password = msg
       } else if (lower.includes('invalid email/username or password')) {
-        nextErrors.identifier = t('k_invalid_email_username_or_password', 'Email/Utilizator sau parola invalide.', 'Invalid Email/Username or Password.')
-        nextErrors.password = t('k_invalid_email_username_or_password', 'Email/Utilizator sau parola invalide.', 'Invalid Email/Username or Password.')
+        nextErrors.identifier = t('k_invalid_email_username_or_password')
+        nextErrors.password = t('k_invalid_email_username_or_password')
       } else {
         nextErrors.general = msg
       }
       setAuthFieldErrors(nextErrors)
+    } finally {
+      setAuthBusy(false)
+      setAuthActionBusy(null)
+    }
+  }
+
+  const startSocialLogin = (provider: 'google' | 'facebook' | 'apple') => {
+    setAuthFieldErrors(prev => ({ ...prev, general: '' }))
+    setError(null)
+    const returnTo = window.location.href
+    window.location.href = getOAuthStartUrl(provider, returnTo)
+  }
+
+  const onVerifyEmailRegistration = async () => {
+    const identifier = String(authEmailVerificationPendingIdentifier || '').trim()
+    const code = String(authEmailVerificationCode || '').replace(/\D+/g, '')
+    if (!identifier) return
+    const emptyErrors = { identifier: '', password: '', general: '' }
+    setAuthBusy(true)
+    setAuthActionBusy('verify_email')
+    setAuthFieldErrors(emptyErrors)
+    try {
+      if (code.length !== 6) {
+        setAuthFieldErrors({ ...emptyErrors, general: t('k_email_verification_code_must_have_6_digits') })
+        return
+      }
+      const res = await authVerifyEmailRegistration({ identifier, code })
+      if (!res.authenticated || !res.email) throw new Error(t('k_email_verification_failed'))
+      await loadUserConfig()
+      setUserEmail(res.email)
+      setAuthEmailVerificationPendingIdentifier(null)
+      setAuthEmailVerificationCode('')
+      setAuthPassword('')
+      setAuthFieldErrors(emptyErrors)
+      setRunInfo(null)
+    } catch (e: any) {
+      const msg = String(e?.message ?? t('k_email_verification_failed'))
+      setAuthFieldErrors({ ...emptyErrors, general: msg })
     } finally {
       setAuthBusy(false)
       setAuthActionBusy(null)
@@ -747,12 +902,12 @@ export default function App() {
       if (accountEmail) clearDashboardCacheForContext('account', accountEmail)
       if (entryMode === 'anonymous') {
         loadAnonymousConfig()
-        setRunInfo(t('k_signed_out_running_in_anonymous_local_mode', 'Deconectat. Ruleaza in modul anonim local.', 'Signed out. Running in anonymous local mode.'))
+        setRunInfo(t('k_signed_out_running_in_anonymous_local_mode'))
       } else {
-        setRunInfo(t('k_signed_out_from_user_account', 'Deconectat din contul de utilizator.', 'Signed out from user account.'))
+        setRunInfo(t('k_signed_out_from_user_account'))
       }
     } catch (e: any) {
-      setError(e?.message ?? t('k_logout_failed', 'Deconectarea a esuat.', 'Logout failed.'))
+      setError(e?.message ?? t('k_logout_failed'))
     } finally {
       setAuthBusy(false)
       setAuthActionBusy(null)
@@ -760,12 +915,7 @@ export default function App() {
   }
 
   const onResetAppState = async () => {
-    const ok = window.confirm(
-      t(
-        'ATENTIE! Vei pierde toate modificarile pe care le-ai facut legate de categoriile tranzactiilor!\nResetezi categoriile la valorile initiale/implicite?',
-        'WARNING! You will lose all changes made to transaction categories!\nReset Categories to initial/default values?'
-      )
-    )
+    const ok = window.confirm(t('k_reset_categories_warning_confirm'))
     if (!ok) return
 
     setLoading(true); setError(null)
@@ -796,7 +946,7 @@ export default function App() {
       setAuthFieldErrors({ identifier: '', password: '', general: '' })
 
       if (isAccountMode) {
-        if (!isLoggedIn) throw new Error(t('k_please_login_to_reset_categories_in_account_mode', 'Autentifica-te pentru a reseta categoriile in modul Cont Utilizator.', 'Please login to reset categories in account mode.'))
+        if (!isLoggedIn) throw new Error(t('k_please_login_to_reset_categories_in_account_mode'))
         await Promise.all([
           putMyCategories(defaultCategories),
           putMyOverrides(nextOverrides),
@@ -808,9 +958,9 @@ export default function App() {
         saveSettings(nextSettings)
       }
 
-      setRunInfo(t('k_categories_reset_to_default_values', 'Categoriile au fost resetate la valorile implicite.', 'Categories reset to default values.'))
+      setRunInfo(t('k_categories_reset_to_default_values'))
     } catch (e: any) {
-      setError(e?.message ?? t('k_reset_failed', 'Resetarea a esuat.', 'Reset failed.'))
+      setError(e?.message ?? t('k_reset_failed'))
     } finally {
       setLoading(false)
     }
@@ -831,7 +981,7 @@ export default function App() {
       }))
       setTxs(applyCategoryAliases(normalized, categories, aliases))
     } catch (e: any) {
-      setError(e?.message ?? t('k_reload_failed', 'Reincarcarea a esuat.', 'Reload failed.'))
+      setError(e?.message ?? t('k_reload_failed'))
     }
   }
 
@@ -855,7 +1005,7 @@ export default function App() {
       }
       setIsReloadingView(false)
       if (reloadOk) {
-        setRunInfo(t('k_done_dashboard_reloaded_successfully', 'Gata. Dashboard-ul a fost reincarcat cu succes.', 'Done. Dashboard reloaded successfully.'))
+        setRunInfo(t('k_done_dashboard_reloaded_successfully'))
       }
     }
   }
@@ -865,7 +1015,7 @@ export default function App() {
     try {
       await saveSettingsByMode(next)
     } catch (e: any) {
-      setError(e?.message ?? t('k_save_settings_failed', 'Salvarea setarilor a esuat.', 'Save settings failed.'))
+      setError(e?.message ?? t('k_save_settings_failed'))
       throw e
     }
   }
@@ -940,7 +1090,7 @@ export default function App() {
       try {
         await loadUserConfig()
       } catch (e: any) {
-        setError(e?.message ?? t('k_failed_to_load_account_data', 'Incarcarea datelor contului a esuat.', 'Failed to load account data.'))
+        setError(e?.message ?? t('k_failed_to_load_account_data'))
       }
         }
     setModeSwitchingTo(null)
@@ -974,10 +1124,7 @@ export default function App() {
           }}
         >
           <p style={{ margin: 0, color: '#334155' }}>
-            {t(
-              'Transformă automat orice extras de cont într-un dashboard financiar interactiv ce ofera control complet pentru organizarea, filtrarea și interpretarea tranzacțiilor, o balanta clara Venituri vs. Cheltuieli, plus posibilitatea de a include si configura detalii legate de economii.',
-              'Automatically turn any account statement into an interactive financial dashboard with full control for organizing, filtering, and interpreting transactions, a clear Income vs. Expenses balance, plus configurable savings details.'
-            )}
+            {t('k_app_description')}
           </p>
         </section>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 0, marginBottom: 10}}>
@@ -1002,7 +1149,7 @@ export default function App() {
               onClick={() => {}}
               style={{ border: 'none', background: 'transparent', color: '#0f172a', fontWeight: 600, padding: 0 }}
             >
-              {t('k_mode_selection', 'Selectare Mod', 'Mode Selection')}
+              {t('k_mode_selection')}
             </button>
           </nav>
           <select
@@ -1030,25 +1177,22 @@ export default function App() {
             }}
           >
             <span className="reload-spin" style={{ fontSize: 28, lineHeight: 1 }}>{'\u21bb'}</span>
-            <span style={{ fontSize: 13, color: '#475569' }}>{t('k_applying_selected_language', 'Se aplica limba selectata...', 'Applying selected language...')}</span>
+            <span style={{ fontSize: 13, color: '#475569' }}>{t('k_applying_selected_language')}</span>
           </section>
         ) : (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginTop: 14 }}>
                 <div id="card-landing-anonymous" style={{ border: '1px solid #d9e2ec', borderRadius: 12, padding: 12, background: '#ffffff' }}>
-                  <h3 style={{ marginTop: 0, marginBottom: 8 }}>{t('k_anonymous', 'Anonim', 'Anonymous')}</h3>
+                  <h3 style={{ marginTop: 0, marginBottom: 8 }}>{t('k_anonymous')}</h3>
                   <p style={{ marginTop: 0, color: '#475569', fontSize: 13 }}>
-                    {t(
-                      'Functioneaza imediat fara cont. Categoriile si override-urile se salveaza local, doar in acest browser/dispozitiv.',
-                      'Works immediately with no account. Categories and overrides are saved only in this browser/device using local storage.'
-                    )}
+                    {t('k_mode_anonymous_description')}
                   </p>
                                                       <button
                     id="btn-landing-anonymous"
                     className="app-btn"
                     onClick={() => { void onSelectMode('anonymous') }}
                     disabled={!!modeSwitchingTo}
-                    title={modeSwitchingTo ? t('k_loading', 'Incarcare...', 'Loading...') : undefined}
+                    title={modeSwitchingTo ? t('k_loading') : undefined}
                     style={{
                       padding: '8px 12px',
                       borderRadius: 10,
@@ -1062,23 +1206,20 @@ export default function App() {
                       opacity: modeSwitchingTo ? 0.95 : 1,
                     }}
                   >
-                    {t('k_continue_as_anonymous', 'Continua ca Anonim', 'Continue as Anonymous')}
+                    {t('k_continue_as_anonymous')}
                   </button>
                 </div>
                 <div id="card-landing-account" style={{ border: '1px solid #d9e2ec', borderRadius: 12, padding: 12, background: '#ffffff' }}>
-                  <h3 style={{ marginTop: 0, marginBottom: 8 }}>{t('k_user_account', 'Cont Utilizator', 'User Account')}</h3>
+                  <h3 style={{ marginTop: 0, marginBottom: 8 }}>{t('k_user_account')}</h3>
                   <p style={{ marginTop: 0, color: '#475569', fontSize: 13 }}>
-                    {t(
-                      'Autentifica-te pentru a salva categoriile si override-urile per cont in baza de date, sincronizate intre sesiuni.',
-                      'Sign in to store categories and merchant/type overrides per account in the database, synced across sessions.'
-                    )}
+                    {t('k_mode_account_description')}
                   </p>
                                                       <button
                     id="btn-landing-account"
                     className="app-btn"
                     onClick={() => { void onSelectMode('account') }}
                     disabled={!!modeSwitchingTo}
-                    title={modeSwitchingTo ? t('k_loading', 'Incarcare...', 'Loading...') : undefined}
+                    title={modeSwitchingTo ? t('k_loading') : undefined}
                     style={{
                       padding: '8px 12px',
                       borderRadius: 10,
@@ -1092,18 +1233,29 @@ export default function App() {
                       opacity: modeSwitchingTo ? 0.95 : 1,
                     }}
                   >
-                    {t('k_continue_with_user_account', 'Continua cu Cont Utilizator', 'Continue with User Account')}
+                    {t('k_continue_with_user_account')}
                   </button>
                 </div>
               </div>
           </>
         )}
         <footer style={{ marginTop: 'auto', paddingTop: 24, borderTop: '1px solid #e2e8f0', color: '#666', fontSize: 12 }}>
-          {t(
-            'V1.1 - Modul anonim foloseste cache local. Modul autentificat stocheaza categoriile si override-urile per cont.',
-            'V1.1 - Anonymous mode uses local cache. Signed-in mode stores categories and overrides per account.'
-          )}
+          {t('k_footer_local_vs_account')}
         </footer>
+        <CookieConsentPanel
+          language={language}
+          t={t}
+          visible={showCookieBanner}
+          modalOpen={cookieModalOpen}
+          draft={cookieConsentDraft}
+          onDraftChange={setCookieConsentDraft}
+          onAcceptAll={() => applyCookieConsentSelection({ preferences: true, performance: true })}
+          onRejectOptional={() => applyCookieConsentSelection({ preferences: false, performance: false })}
+          onOpenCustomize={() => setCookieModalOpen(true)}
+          onOpenSettings={() => { setCookieConsentDraft({ preferences: cookieConsent.preferences, performance: cookieConsent.performance }); setCookieModalOpen(true) }}
+          onCloseModal={() => setCookieModalOpen(false)}
+          onSaveSelection={() => applyCookieConsentSelection(cookieConsentDraft)}
+        />
       </div>
     )
   }
@@ -1137,10 +1289,7 @@ export default function App() {
         }}
       >
         <p style={{ margin: 0, color: '#334155' }}>
-          {t(
-            'Transformă automat orice extras de cont într-un dashboard financiar interactiv ce ofera control complet pentru organizarea, filtrarea și interpretarea tranzacțiilor, o balanta clara Venituri vs. Cheltuieli, plus posibilitatea de a include si configura detalii legate de economii.',
-            'Automatically turn any account statement into an interactive financial dashboard with full control for organizing, filtering, and interpreting transactions, a clear Income vs. Expenses balance, plus configurable savings details.'
-          )}
+          {t('k_app_description')}
         </p>
       </section>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 0, marginBottom: 10 }}>
@@ -1165,43 +1314,43 @@ export default function App() {
             onClick={() => { setEntryMode('landing') }}
             style={{ border: 'none', background: 'transparent', color: '#0f172a', fontWeight: 600, padding: 0 }}
           >
-            {t('k_mode_selection', 'Selectare Mod', 'Mode Selection')}
+            {t('k_mode_selection')}
           </button>
           {entryMode === 'anonymous' && (
             <>
               <span style={{ color: '#94a3b8' }}>{'>'}</span>
-              <span>{t('k_anonymous', 'Anonim', 'Anonymous')}</span>
+              <span>{t('k_anonymous')}</span>
               <span style={{ color: '#94a3b8' }}>{'>'}</span>
-              <span>{t('k_dashboard', 'Dashboard', 'Dashboard')}</span>
+              <span>{t('k_dashboard')}</span>
             </>
           )}
           {entryMode === 'account' && !isLoggedIn && (
             <>
               <span style={{ color: '#94a3b8' }}>{'>'}</span>
-              <span>{t('k_user_login', 'Autentificare utilizator', 'User Login')}</span>
+              <span>{t('k_user_login')}</span>
             </>
           )}
           {entryMode === 'account' && isLoggedIn && (
             <>
               <span style={{ color: '#94a3b8' }}>{'>'}</span>
-              <span>{t(`Cont Utilizator (${userEmail})`, `User Account (${userEmail})`)}</span>
+              <span>{tf('k_user_account_with_name', { user: userEmail ?? '' })}</span>
               <span style={{ color: '#94a3b8' }}>{'>'}</span>
-              <span>{t('k_dashboard', 'Dashboard', 'Dashboard')}</span>
+              <span>{t('k_dashboard')}</span>
             </>
           )}
         </nav>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flex: '1 1 auto', minWidth: 0 }}>
           {entryMode !== 'anonymous' && authLoading ? (
-            <div style={{ fontSize: 12, color: '#475569' }}>{t('k_checking_session', 'Verific sesiunea...', 'Checking session...')}</div>
+            <div style={{ fontSize: 12, color: '#475569' }}>{t('k_checking_session')}</div>
           ) : isLoggedIn ? (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12, color: '#1e293b' }}>{t('k_signed_in', 'Conectat: ', 'Signed in: ')}{userEmail}</span>
+              <span style={{ fontSize: 12, color: '#1e293b' }}>{t('k_signed_in')}{userEmail}</span>
                                           <button
                 id="btn-auth-logout"
                 className="app-btn"
                 onClick={onLogout}
                 disabled={authBusy || loading}
-                title={authActionBusy === 'logout' ? t('k_loading', 'Incarcare...', 'Loading...') : undefined}
+                title={authActionBusy === 'logout' ? t('k_loading') : undefined}
                 style={{
                   padding: '6px 10px',
                   borderRadius: 10,
@@ -1214,7 +1363,7 @@ export default function App() {
                   gap: 6,
                 }}
               >
-                {t('k_logout', 'Deconectare', 'Logout')}
+                {t('k_logout')}
               </button>
               <div style={{ width: 1, height: 20, background: '#dbe4ef' }} />
               <select
@@ -1255,15 +1404,16 @@ export default function App() {
             padding: 0,
           }}
         >
-          <h3 style={{ marginTop: 0, marginBottom: 10, textAlign: 'center' }}>{t('k_login_register', 'Login / Inregistrare', 'Login / Register')}</h3>
+          <h3 style={{ marginTop: 0, marginBottom: 10, textAlign: 'center' }}>{t('k_login_register')}</h3>
           <div style={{ display: 'grid', gap: 8 }}>
             <input
               value={authIdentifier}
               onChange={e => {
                 setAuthIdentifier(e.target.value)
+                setAuthEmailVerificationPendingIdentifier(prev => (prev && prev !== e.target.value.trim().toLowerCase() ? null : prev))
                 setAuthFieldErrors(prev => ({ ...prev, identifier: '', general: '' }))
               }}
-              placeholder={t('k_email_username', 'Email / Utilizator', 'Email / Username')}
+              placeholder={t('k_email_username')}
               type="text"
               style={{ height: 40, padding: '0 10px', borderRadius: 10, border: `1px solid ${authFieldErrors.identifier ? '#dc2626' : '#bbb'}`, width: '100%', boxSizing: 'border-box' }}
             />
@@ -1274,7 +1424,7 @@ export default function App() {
                   setAuthPassword(e.target.value)
                   setAuthFieldErrors(prev => ({ ...prev, password: '', general: '' }))
                 }}
-                placeholder={t('k_password', 'Parola', 'Password')}
+                placeholder={t('k_password')}
                 type={showAuthPassword ? 'text' : 'password'}
                 style={{ height: 40, padding: '0 34px 0 10px', borderRadius: 10, border: `1px solid ${authFieldErrors.password ? '#dc2626' : '#bbb'}`, width: '100%', boxSizing: 'border-box' }}
               />
@@ -1283,7 +1433,7 @@ export default function App() {
                 type="button"
                 className="app-btn"
                 onClick={() => setShowAuthPassword(v => !v)}
-                title={showAuthPassword ? t('k_hide_password', 'Ascunde parola', 'Hide password') : t('k_show_password', 'Arata parola', 'Show password')}
+                title={showAuthPassword ? t('k_hide_password') : t('k_show_password')}
                 style={{
                   position: 'absolute',
                   right: 8,
@@ -1318,13 +1468,41 @@ export default function App() {
             <div style={{ minHeight: 18, fontSize: 12, color: '#dc2626', textAlign: 'center' }}>
               {authFieldErrors.identifier || authFieldErrors.password || authFieldErrors.general}
             </div>
+            {authEmailVerificationPendingIdentifier && (
+              <div style={{ display: 'grid', gap: 8, border: '1px solid #dbe4ef', borderRadius: 12, padding: 10, background: '#f8fafc' }}>
+                <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.35 }}>
+                  {t('k_email_verification_enter_pin_prompt')} <strong>{authEmailVerificationPendingIdentifier}</strong>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    id="input-auth-email-verification-code"
+                    value={authEmailVerificationCode}
+                    onChange={e => setAuthEmailVerificationCode(e.target.value.replace(/\D+/g, '').slice(0, 6))}
+                    placeholder={t('k_email_verification_code_placeholder')}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    style={{ height: 38, width: 140, padding: '0 10px', borderRadius: 10, border: '1px solid #bbb', boxSizing: 'border-box', letterSpacing: 2 }}
+                  />
+                  <button
+                    id="btn-auth-verify-email-code"
+                    className="app-btn"
+                    onClick={() => { void onVerifyEmailRegistration() }}
+                    disabled={authBusy || loading}
+                    title={authActionBusy === 'verify_email' ? t('k_loading') : undefined}
+                    style={{ height: 38, padding: '0 12px', borderRadius: 10, border: 'none', background: authActionBusy === 'verify_email' ? '#d6dce5' : 'linear-gradient(135deg, #16a34a, #15803d)', color: authActionBusy === 'verify_email' ? '#49566a' : '#fff', fontWeight: 600 }}
+                  >
+                    {t('k_verify_email_code')}
+                  </button>
+                </div>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 6 }}>
                                           <button
                 id="btn-auth-login"
                 className="app-btn"
                 onClick={() => handleAuthAction('login')}
                 disabled={authBusy || loading}
-                title={authActionBusy === 'login' ? t('k_loading', 'Incarcare...', 'Loading...') : undefined}
+                title={authActionBusy === 'login' ? t('k_loading') : undefined}
                 style={{
                   width: 120,
                   height: 38,
@@ -1336,14 +1514,14 @@ export default function App() {
                   fontWeight: 600,
                 }}
               >
-                {t('k_login', 'Autentificare', 'Login')}
+                {t('k_login')}
               </button>
                                           <button
                 id="btn-auth-register"
                 className="app-btn"
                 onClick={() => handleAuthAction('register')}
                 disabled={authBusy || loading}
-                title={authActionBusy === 'register' ? t('k_loading', 'Incarcare...', 'Loading...') : undefined}
+                title={authActionBusy === 'register' ? t('k_loading') : undefined}
                 style={{
                   width: 120,
                   height: 38,
@@ -1355,9 +1533,30 @@ export default function App() {
                   fontWeight: 600,
                 }}
               >
-                {t('k_register', 'Inregistrare', 'Register')}
+                {t('k_register')}
               </button>
             </div>
+
+            {showSocialLoginOptions && (
+              <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
+                <div style={{ fontSize: 12, color: '#64748b', textAlign: 'center' }}>{t('k_or_continue_with')}</div>
+                {socialLoginGoogleEnabled && (
+                  <button id="btn-auth-social-google" className="app-btn" onClick={() => startSocialLogin('google')} disabled={authBusy || loading} style={{ height: 38, borderRadius: 10, border: '1px solid #d1dbe8', background: '#fff', color: '#1f2937', fontWeight: 600 }}>
+                    {t('k_social_continue_with_google')}
+                  </button>
+                )}
+                {socialLoginFacebookEnabled && (
+                  <button id="btn-auth-social-facebook" className="app-btn" onClick={() => startSocialLogin('facebook')} disabled={authBusy || loading} style={{ height: 38, borderRadius: 10, border: '1px solid #d1dbe8', background: '#fff', color: '#1f2937', fontWeight: 600 }}>
+                    {t('k_social_continue_with_facebook')}
+                  </button>
+                )}
+                {socialLoginAppleEnabled && (
+                  <button id="btn-auth-social-apple" className="app-btn" onClick={() => startSocialLogin('apple')} disabled={authBusy || loading} style={{ height: 38, borderRadius: 10, border: '1px solid #d1dbe8', background: '#fff', color: '#1f2937', fontWeight: 600 }}>
+                    {t('k_social_continue_with_apple')}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -1378,7 +1577,7 @@ export default function App() {
               }}
             >
               <span className="reload-spin" style={{ fontSize: 28, lineHeight: 1 }}>{'\u21bb'}</span>
-              <span style={{ fontSize: 13, color: '#475569' }}>{t('k_applying_selected_language', 'Se aplica limba selectata...', 'Applying selected language...')}</span>
+              <span style={{ fontSize: 13, color: '#475569' }}>{t('k_applying_selected_language')}</span>
             </section>
           ) : (
             <>
@@ -1415,14 +1614,14 @@ export default function App() {
                 {isBuildingDashboard ? (
                   <>
                     <span className="reload-spin" style={{ fontSize: 14, lineHeight: 1 }}>{'\u21bb'}</span>
-                    <span style={{ marginLeft: 4 }}>{t('k_building_dashboard', 'Creare dashboard...', 'Building dashboard...')}</span>
+                    <span style={{ marginLeft: 4 }}>{t('k_building_dashboard')}</span>
                   </>
                 ) : (
                   isAccountMode && !isLoggedIn
-                    ? t('k_login_required_for_account_mode', 'Login necesar pentru modul de cont', 'Login Required for Account Mode')
+                    ? t('k_login_required_for_account_mode')
                     : (
                       <>
-                        <span>{t('k_import_bank_statement', 'Importa extras bancar', 'Import Bank Statement')}</span>
+                        <span>{t('k_import_bank_statement')}</span>
                       </>
                     )
                 )}
@@ -1432,7 +1631,7 @@ export default function App() {
                 className="app-btn"
                 onClick={() => { void onResetDashboardView() }}
                 disabled={!canUseDashboard || txs.length === 0 || !canReloadView || loading || isReloadingView}
-                title={t('k_reload_view', 'Reincarca vizualizarea', 'Reload View')}
+                title={t('k_reload_view')}
                 style={{
                   width: 36,
                   height: 36,
@@ -1503,7 +1702,7 @@ export default function App() {
                       pointerEvents: noticeText ? 'auto' : 'none',
                       visibility: noticeText ? 'visible' : 'hidden',
                     }}
-                    title={t('k_close_notification', 'Inchide notificarea', 'Close notification')}
+                    title={t('k_close_notification')}
                   >
                     x
                   </button>
@@ -1512,6 +1711,7 @@ export default function App() {
             </div>
           </section>
 
+        <Suspense fallback={<section id="dashboard-lazy-loading" style={{ marginTop: 14, color: '#475569', fontSize: 13 }}>{t('k_loading')}</section>}>
         <Dashboard
           txs={txs}
           statementDetails={statementDetails}
@@ -1537,20 +1737,34 @@ export default function App() {
           onCancelRenameCategory={cancelRenameCategory}
           onDeleteCategory={handleDeleteCategory}
         />
+        </Suspense>
             </>
           )}
         </>
       )}
 
       <footer style={{ marginTop: 'auto', paddingTop: 24, borderTop: '1px solid #e2e8f0', color: '#666', fontSize: 12 }}>
-        {t(
-          'V1.1 - Modul anonim foloseste cache local. Modul autentificat stocheaza categoriile si override-urile per cont.',
-          'V1.1 - Anonymous mode uses local cache. Signed-in mode stores categories and overrides per account.'
-        )}
+        {t('k_footer_local_vs_account')}
       </footer>
+      <CookieConsentPanel
+        language={language}
+        t={t}
+        visible={showCookieBanner}
+        modalOpen={cookieModalOpen}
+        draft={cookieConsentDraft}
+        onDraftChange={setCookieConsentDraft}
+        onAcceptAll={() => applyCookieConsentSelection({ preferences: true, performance: true })}
+        onRejectOptional={() => applyCookieConsentSelection({ preferences: false, performance: false })}
+        onOpenCustomize={() => setCookieModalOpen(true)}
+        onOpenSettings={() => { setCookieConsentDraft({ preferences: cookieConsent.preferences, performance: cookieConsent.performance }); setCookieModalOpen(true) }}
+        onCloseModal={() => setCookieModalOpen(false)}
+        onSaveSelection={() => applyCookieConsentSelection(cookieConsentDraft)}
+      />
     </div>
   )
 }
+
+
 
 
 
