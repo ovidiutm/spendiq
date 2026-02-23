@@ -20,18 +20,35 @@ export type ParseStatementResponse = {
   statementDetails: StatementDetails
 }
 
+
 type AuthPayload = {
   identifier: string
   password: string
+}
+
+
+function generateClientRequestId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID()
+    }
+  } catch {
+    // ignore and fallback
+  }
+  return `req_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`
+}
+
+function withRequestIdHeader(headers?: HeadersInit): Headers {
+  const out = new Headers(headers ?? {})
+  if (!out.has('X-Request-ID')) out.set('X-Request-ID', generateClientRequestId())
+  return out
 }
 
 async function apiFetch(path: string, init: RequestInit = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: 'include',
-    headers: {
-      ...(init.headers ?? {}),
-    },
+    headers: withRequestIdHeader(init.headers),
   })
   return res
 }
@@ -199,3 +216,5 @@ export async function authVerifyEmailRegistration(payload: { identifier: string;
   if (!res.ok) throw new Error(await extractErrorMessage(res, `Email verification failed: ${res.status}`))
   return await res.json()
 }
+
+

@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import re
 import secrets
@@ -6,9 +7,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import pdfplumber
-from fastapi import Cookie, Depends, FastAPI, File, HTTPException, Response, UploadFile
+from fastapi import Cookie, Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
 from passlib.context import CryptContext
 from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import delete, select
@@ -17,7 +20,8 @@ from sqlalchemy.orm import Session
 from .db import get_db, init_db
 from .oauth import router as oauth_router
 from .mailer import send_email_verification_code
-from .models import User, UserCategory, UserOverride, UserSession, UserSetting, UserOAuthIdentity, EmailVerificationChallenge
+from .logging_utils import configure_logging, get_request_id, log_event, mask_email, reset_request_id, set_request_id
+from .models import AuditEvent, User, UserCategory, UserOverride, UserSession, UserSetting, UserOAuthIdentity, EmailVerificationChallenge
 from .parser import (
     categorize_transactions,
     extract_statement_details_pdf,
@@ -28,6 +32,8 @@ from .parser import (
     parse_ing_statement_text,
 )
 
+
+configure_logging()
 
 app = FastAPI(title="Expenses Helper API", version="0.2.0")
 
@@ -41,6 +47,81 @@ app.add_middleware(
 )
 
 app.include_router(oauth_router)
+
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    started = datetime.now(timezone.utc)
+    rid = request.headers.get("x-request-id") or secrets.token_hex(8)
+    token = set_request_id(rid)
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    except Exception:
+        duration_ms = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
+        log_event(
+            'error',
+            'http.request_failed',
+            method=request.method,
+            path=request.url.path,
+            query=str(request.url.query or ''),
+            duration_ms=duration_ms,
+        )
+        raise
+    finally:
+        if response is not None:
+            response.headers['X-Request-ID'] = rid
+            duration_ms = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
+            if request.url.path != '/health':
+                status = int(response.status_code)
+                req_level = 'error' if status >= 500 else 'warning' if status >= 400 else 'info'
+                log_event(
+                    req_level,
+                    'http.request',
+                    method=request.method,
+                    path=request.url.path,
+                    query=str(request.url.query or ''),
+                    status_code=response.status_code,
+                    duration_ms=duration_ms,
+                )
+        reset_request_id(token)
+
+
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    level = 'warning' if int(exc.status_code) < 500 else 'error'
+    log_event(
+        level,
+        'http.http_exception',
+        method=request.method,
+        path=request.url.path,
+        status_code=exc.status_code,
+        detail=str(exc.detail),
+    )
+    response = JSONResponse(status_code=exc.status_code, content={'detail': exc.detail})
+    rid = request.headers.get('x-request-id')
+    if rid:
+        response.headers['X-Request-ID'] = rid
+    return response
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    log_event(
+        'warning',
+        'http.validation_error',
+        method=request.method,
+        path=request.url.path,
+        errors=exc.errors(),
+    )
+    response = JSONResponse(status_code=422, content={'detail': exc.errors()})
+    rid = request.headers.get('x-request-id')
+    if rid:
+        response.headers['X-Request-ID'] = rid
+    return response
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SESSION_COOKIE_NAME = "expenses_helper_session"
@@ -101,6 +182,7 @@ class SettingsRequest(BaseModel):
 
 class IdentifierAvailability(BaseModel):
     available: bool
+
 
 
 class EmailVerificationRequest(BaseModel):
@@ -244,6 +326,33 @@ def make_session(db: Session, user_id: int) -> UserSession:
     return session
 
 
+def write_audit_event(
+    db: Session,
+    event: str,
+    *,
+    status: str = 'info',
+    user_id: Optional[int] = None,
+    actor_identifier: Optional[str] = None,
+    details: Optional[Dict[str, object]] = None,
+) -> None:
+    try:
+        row = AuditEvent(
+            user_id=user_id,
+            event=event,
+            status=status,
+            actor_identifier=mask_email(actor_identifier or '') if actor_identifier else '',
+            request_id=(get_request_id() or '')[:64],
+            details_json=json.dumps(details or {}, ensure_ascii=True, default=str),
+        )
+        db.add(row)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        log_event('error', 'audit.write_failed', event_name_value=event, error=str(exc))
+
+
+
+
 def set_session_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
@@ -306,22 +415,27 @@ def register(payload: AuthRequest, response: Response, db: Session = Depends(get
     if is_email_identifier(identifier):
         identifier = validate_email_identifier(identifier)
     if db.scalar(select(User).where(User.email == identifier)):
+        write_audit_event(db, "auth.register_rejected_identifier_exists", status="warning", actor_identifier=identifier)
         raise HTTPException(status_code=409, detail="Identifier already registered.")
 
     if is_email_identifier(identifier):
         code = issue_email_register_challenge(db, identifier, payload.password)
-        delivery = send_email_verification_code(identifier, code)
+        send_email_verification_code(identifier, code)
+        log_event('info', 'auth.register_email_verification_requested', identifier=identifier)
+        write_audit_event(db, 'auth.register_email_verification_requested', actor_identifier=identifier, details={'channel': 'email'})
         return {
             "authenticated": False,
             "verification_required": True,
             "verification_channel": "email",
             "email": identifier,
-            "message": "Verification code sent to email." if delivery == "smtp" else "Verification code generated. Check backend logs (dev).",
+            "message": "Verification code sent. Please check your email (and Spam/Junk folder).",
         }
 
     user = create_user_with_defaults(db, identifier, hash_password(payload.password))
     session = make_session(db, user.id)
     set_session_cookie(response, session.token)
+    log_event('info', 'auth.register_success', identifier=user.email)
+    write_audit_event(db, 'auth.register_success', user_id=user.id, actor_identifier=user.email)
     return {"authenticated": True, "email": user.email}
 
 
@@ -335,6 +449,8 @@ def verify_register_email(payload: EmailVerificationRequest, response: Response,
     user = consume_email_register_challenge(db, identifier, code)
     session = make_session(db, user.id)
     set_session_cookie(response, session.token)
+    log_event('info', 'auth.verify_email_success', identifier=user.email)
+    write_audit_event(db, 'auth.verify_email_success', user_id=user.id, actor_identifier=user.email)
     return {"authenticated": True, "email": user.email}
 
 
@@ -352,10 +468,13 @@ def login(payload: AuthRequest, response: Response, db: Session = Depends(get_db
     identifier = extract_identifier(payload)
     user = db.scalar(select(User).where(User.email == identifier))
     if not user or not verify_password(payload.password, user.password_hash):
+        write_audit_event(db, "auth.login_failed", status="warning", actor_identifier=identifier)
         raise HTTPException(status_code=401, detail="Invalid email/username or password.")
 
     session = make_session(db, user.id)
     set_session_cookie(response, session.token)
+    log_event('info', 'auth.login_success', identifier=user.email)
+    write_audit_event(db, 'auth.login_success', user_id=user.id, actor_identifier=user.email)
     return {"authenticated": True, "email": user.email}
 
 
@@ -369,6 +488,8 @@ def logout(
         db.execute(delete(UserSession).where(UserSession.token == expenses_helper_session))
         db.commit()
     clear_session_cookie(response)
+    log_event('info', 'auth.logout')
+    write_audit_event(db, 'auth.logout')
     return {"authenticated": False}
 
 
@@ -527,35 +648,6 @@ def put_my_settings(
     return {"settings": payload.settings}
 
 
-async def _parse_statement_impl(file: UploadFile) -> dict:
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Please upload a PDF file.")
-
-    data = await file.read()
-    with pdfplumber.open(io.BytesIO(data)) as pdf:
-        extracted_text: Optional[str] = None
-        if not looks_like_ing_statement_pdf(pdf):
-            extracted_text = "\n".join((page.extract_text() or "") for page in pdf.pages)
-            if not looks_like_ing_statement_text(extracted_text):
-                raise HTTPException(status_code=400, detail="Uploaded PDF is not a bank account statement.")
-
-        statement_details = extract_statement_details_pdf(pdf)
-        txs = parse_ing_statement_pdf(pdf)
-        if not txs:
-            extracted_text = extracted_text if extracted_text is not None else "\n".join((page.extract_text() or "") for page in pdf.pages)
-            txs = parse_ing_statement_text(extracted_text)
-            statement_details = extract_statement_details_text(extracted_text)
-
-        if not txs:
-            raise HTTPException(status_code=400, detail="Uploaded PDF is not a bank account statement.")
-    return {
-        "bank": "Auto-Detected",
-        "transactions": txs,
-        "count": len(txs),
-        "statement_details": statement_details,
-    }
-
-
 @app.post("/api/parse/statement")
 async def parse_statement(file: UploadFile = File(...)):
     """
@@ -583,3 +675,4 @@ def ai_categorize_stub():
     (and only if you enable it). For now, keep it stubbed.
     """
     return {"enabled": False, "note": "AI categorizer not wired yet (stub)."}
+

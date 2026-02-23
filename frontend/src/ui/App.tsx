@@ -1,4 +1,4 @@
-﻿import React, { Suspense, useRef, useState, useEffect } from 'react'
+import React, { Suspense, useRef, useState, useEffect } from 'react'
 import {
   parseStatement,
   categorize,
@@ -1075,7 +1075,7 @@ export default function App() {
     void onResetAppState()
   }, [resetSignal])
 
-  const onSelectMode = async (mode: Exclude<EntryMode, 'landing'>) => {
+  const onSelectMode = async (mode: Exclude<EntryMode, 'landing' | 'audit'>) => {
     setModeSwitchingTo(mode)
     setEntryMode(mode)
     setAuthFieldErrors({ identifier: '', password: '', general: '' })
