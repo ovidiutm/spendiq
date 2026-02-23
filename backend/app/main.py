@@ -648,6 +648,35 @@ def put_my_settings(
     return {"settings": payload.settings}
 
 
+
+async def _parse_statement_impl(file: UploadFile) -> dict:
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Please upload a PDF file.")
+
+    data = await file.read()
+    with pdfplumber.open(io.BytesIO(data)) as pdf:
+        extracted_text: Optional[str] = None
+        if not looks_like_ing_statement_pdf(pdf):
+            extracted_text = "\n".join((page.extract_text() or "") for page in pdf.pages)
+            if not looks_like_ing_statement_text(extracted_text):
+                raise HTTPException(status_code=400, detail="Uploaded PDF is not a bank account statement.")
+
+        statement_details = extract_statement_details_pdf(pdf)
+        txs = parse_ing_statement_pdf(pdf)
+        if not txs:
+            extracted_text = extracted_text if extracted_text is not None else "\n".join((page.extract_text() or "") for page in pdf.pages)
+            txs = parse_ing_statement_text(extracted_text)
+            statement_details = extract_statement_details_text(extracted_text)
+
+        if not txs:
+            raise HTTPException(status_code=400, detail="Uploaded PDF is not a bank account statement.")
+    return {
+        "bank": "Auto-Detected",
+        "transactions": txs,
+        "count": len(txs),
+        "statement_details": statement_details,
+    }
+
 @app.post("/api/parse/statement")
 async def parse_statement(file: UploadFile = File(...)):
     """
