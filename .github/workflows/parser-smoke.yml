@@ -1,0 +1,30 @@
+name: parser-smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  parser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run parser smoke tests
+        env:
+          DATABASE_URL: sqlite:///./.ci-smoke.sqlite3
+        run: |
+          cd backend
+          pytest -q tests/test_smoke_parser.py

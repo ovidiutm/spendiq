@@ -7,6 +7,14 @@ export type AuthMe = {
   email?: string
 }
 
+export type OAuthProvider = 'google' | 'facebook' | 'apple'
+
+export type AuthRegisterResponse = AuthMe & {
+  verification_required?: boolean
+  verification_channel?: 'email'
+  message?: string
+}
+
 export type ParseStatementResponse = {
   transactions: Transaction[]
   statementDetails: StatementDetails
@@ -75,7 +83,7 @@ export async function categorize(
   return json.transactions as Transaction[]
 }
 
-export async function authRegister(payload: AuthPayload): Promise<AuthMe> {
+export async function authRegister(payload: AuthPayload): Promise<AuthRegisterResponse> {
   const res = await apiFetch('/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -173,4 +181,21 @@ export async function putMySettings(settings: Record<string, string>): Promise<R
   if (!res.ok) throw new Error(`Save settings failed: ${res.status}`)
   const json = await res.json()
   return (json.settings ?? {}) as Record<string, string>
+}
+
+export function getOAuthStartUrl(provider: OAuthProvider, returnTo?: string): string {
+  const params = new URLSearchParams()
+  if (returnTo) params.set('return_to', returnTo)
+  const q = params.toString()
+  return `${API_BASE}/auth/oauth/${provider}/start${q ? `?${q}` : ''}`
+}
+
+export async function authVerifyEmailRegistration(payload: { identifier: string; code: string }): Promise<AuthMe> {
+  const res = await apiFetch('/auth/register/verify-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(await extractErrorMessage(res, `Email verification failed: ${res.status}`))
+  return await res.json()
 }

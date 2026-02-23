@@ -1,4 +1,5 @@
-﻿export type Language = 'en' | 'ro' | 'fr' | 'it' | 'de'
+export type Language = 'en' | 'ro' | 'fr' | 'it' | 'de'
+type InterpolationValues = Record<string, string | number>
 
 export function normalizeLanguage(raw: string | null | undefined): Language {
   switch (String(raw ?? '').toLowerCase()) {
@@ -421,17 +422,178 @@ export function translate(language: Language, ro: string, en: string): string {
   return en
 }
 
-// Transitional key-based API: keeps compatibility while migrating away from inline text pairs.
-const TRANSITIONAL_KEY_REGISTRY: Record<string, { ro: string; en: string }> = {}
+const KEY_TEXTS = {
+  'k_account_holder': { ro: 'Titular cont', en: 'Account Holder' },
+  'k_account_number': { ro: 'Numar cont', en: 'Account Number' },
+  'k_account_statement_details': { ro: 'Detalii extras de cont', en: 'Account Statement Details' },
+  'k_account_type': { ro: 'Tip cont', en: 'Account Type' },
+  'k_add': { ro: 'Adauga', en: 'Add' },
+  'k_add_edit_category': { ro: 'Adauga / Editeaza categorie', en: 'Add / Edit category' },
+  'k_add_remove_edit_category': { ro: 'Adauga/Sterge/Editeaza categoria', en: 'Add/Remove/Edit Category' },
+  'k_add_savings_account': { ro: 'Adauga cont de economii', en: 'Add savings account' },
+  'k_all': { ro: 'Toate', en: 'All' },
+  'k_all_categories': { ro: 'Toate categoriile', en: 'All categories' },
+  'k_all_columns': { ro: 'Toate coloanele', en: 'All columns' },
+  'k_amount': { ro: 'Suma', en: 'Amount' },
+  'k_amount_sum': { ro: 'Suma totala', en: 'Amount Sum' },
+  'k_anonymous': { ro: 'Anonim', en: 'Anonymous' },
+  'k_applying_selected_language': { ro: 'Se aplica limba selectata...', en: 'Applying selected language...' },
+  'k_authentication_failed': { ro: 'Autentificarea a esuat.', en: 'Authentication failed.' },
+  'k_balance_overview': { ro: 'Sumar Balanta', en: 'Balance Overview' },
+  'k_building_dashboard': { ro: 'Creare dashboard...', en: 'Building dashboard...' },
+  'k_cancel': { ro: 'Anuleaza', en: 'Cancel' },
+  'k_categories': { ro: 'Categorii', en: 'Categories' },
+  'k_categories_reset_to_default_values': { ro: 'Categoriile au fost resetate la valorile implicite.', en: 'Categories reset to default values.' },
+  'k_category': { ro: 'Categorie', en: 'Category' },
+  'k_checking_session': { ro: 'Verific sesiunea...', en: 'Checking session...' },
+  'k_close_notification': { ro: 'Inchide notificarea', en: 'Close notification' },
+  'k_continue_as_anonymous': { ro: 'Continua ca Anonim', en: 'Continue as Anonymous' },
+  'k_continue_with_user_account': { ro: 'Continua cu Cont Utilizator', en: 'Continue with User Account' },
+  'k_cookie_banner_title': { ro: 'Setari cookie', en: 'Cookie Settings' },
+  'k_cookie_banner_description': { ro: 'Folosim cookie-uri si stocare locala pentru functionarea site-ului si, optional, pentru a salva preferintele si cache-ul dashboard-ului pe acest dispozitiv. Poti accepta toate, respinge optionalele sau personaliza alegerea.', en: 'We use cookies and browser storage for site operation and, optionally, to save preferences and dashboard cache on this device. You can accept all, reject optional cookies, or customize your choice.' },
+  'k_cookie_accept_all': { ro: 'Accept tot', en: 'Accept all' },
+  'k_cookie_reject_optional': { ro: 'Respinge optionalele', en: 'Reject optional' },
+  'k_cookie_customize': { ro: 'Personalizeaza', en: 'Customize' },
+  'k_cookie_settings': { ro: 'Cookie-uri', en: 'Cookies' },
+  'k_cookie_modal_title': { ro: 'Preferinte cookie', en: 'Cookie Preferences' },
+  'k_cookie_modal_description': { ro: 'Controleaza ce categorii optionale de cookie-uri si stocare in browser permiti. Cookie-urile strict necesare raman active.', en: 'Control which optional cookie and browser storage categories you allow. Strictly necessary cookies remain active.' },
+  'k_cookie_necessary': { ro: 'Strict necesare', en: 'Strictly necessary' },
+  'k_cookie_necessary_description': { ro: 'Necesare pentru autentificare, securitate si functionarea de baza a aplicatiei.', en: 'Required for authentication, security, and core app functionality.' },
+  'k_cookie_always_active': { ro: 'Mereu active', en: 'Always active' },
+  'k_cookie_preferences': { ro: 'Preferinte', en: 'Preferences' },
+  'k_cookie_preferences_description': { ro: 'Salveaza local limba, categorii si override-uri (mod anonim) pe acest dispozitiv.', en: 'Stores language, categories, and overrides locally (anonymous mode) on this device.' },
+  'k_cookie_performance': { ro: 'Performanta / cache vizualizare', en: 'Performance / view cache' },
+  'k_cookie_performance_description': { ro: 'Pastreaza in sesiune cache-ul dashboard-ului pentru reincarcari rapide in acest browser.', en: 'Keeps dashboard cache in session storage for faster reloads in this browser.' },
+  'k_cookie_save_selection': { ro: 'Salveaza selectia', en: 'Save selection' },
+  'k_or_continue_with': { ro: 'Sau continua cu', en: 'Or continue with' },
+  'k_social_continue_with_google': { ro: 'Continua cu Google', en: 'Continue with Google' },
+  'k_social_continue_with_facebook': { ro: 'Continua cu Facebook', en: 'Continue with Facebook' },
+  'k_social_continue_with_apple': { ro: 'Continua cu Apple', en: 'Continue with Apple' },
+  'k_oauth_provider_denied': { ro: 'Autentificarea a fost anulata de provider.', en: 'Sign-in was cancelled by the provider.' },
+  'k_oauth_invalid_state': { ro: 'Sesiunea de autentificare sociala a expirat sau este invalida. Incearca din nou.', en: 'Social sign-in session expired or is invalid. Please try again.' },
+  'k_oauth_missing_code': { ro: 'Providerul nu a returnat codul de autentificare.', en: 'The provider did not return an authorization code.' },
+  'k_oauth_failed': { ro: 'Autentificarea sociala a esuat.', en: 'Social sign-in failed.' },
+  'k_oauth_provider_not_configured': { ro: 'Acest provider social nu este configurat inca.', en: 'This social provider is not configured yet.' },
+  'k_email_verification_code_sent': { ro: 'Codul de verificare a fost trimis pe email. Verifica inbox-ul (sau backend logs in development).', en: 'Verification code was sent by email. Check your inbox (or backend logs in development).' },
+  'k_email_verification_enter_pin_prompt': { ro: 'Introdu codul PIN de 6 cifre trimis la:', en: 'Enter the 6-digit PIN sent to:' },
+  'k_email_verification_code_placeholder': { ro: 'Cod PIN (6 cifre)', en: 'PIN code (6 digits)' },
+  'k_verify_email_code': { ro: 'Verifica email', en: 'Verify email' },
+  'k_email_verification_code_must_have_6_digits': { ro: 'Codul de verificare trebuie sa aiba 6 cifre.', en: 'Verification code must have 6 digits.' },
+  'k_email_verification_failed': { ro: 'Verificarea emailului a esuat.', en: 'Email verification failed.' },
+  'k_dashboard': { ro: 'Dashboard', en: 'Dashboard' },
+  'k_date': { ro: 'Data', en: 'Date' },
+  'k_delete': { ro: 'Sterge', en: 'Delete' },
+  'k_direction': { ro: 'Directie', en: 'Direction' },
+  'k_done_dashboard_reloaded_successfully': { ro: 'Gata. Dashboard-ul a fost reincarcat cu succes.', en: 'Done. Dashboard reloaded successfully.' },
+  'k_done_statement_processed': { ro: 'Gata. "{file}" procesat in {duration}s ({count} tranzactii).', en: 'Done. "{file}" processed in {duration}s ({count} transactions).' },
+  'k_email_username': { ro: 'Email / Utilizator', en: 'Email / Username' },
+  'k_email_username_is_required': { ro: 'Email/Utilizator este obligatoriu.', en: 'Email/Username is required.' },
+  'k_expenses': { ro: 'Cheltuieli', en: 'Expenses' },
+  'k_expenses_debits': { ro: 'Cheltuieli (debit)', en: 'Expenses (debits)' },
+  'k_expenses_transactions': { ro: 'Tranzactii cheltuieli', en: 'Expenses Transactions' },
+  'k_export_csv': { ro: 'Export CSV', en: 'Export CSV' },
+  'k_export_csv_filtered': { ro: 'Export CSV (filtrat)', en: 'Export CSV (filtered)' },
+  'k_failed_to_load_account_data': { ro: 'Incarcarea datelor contului a esuat.', en: 'Failed to load account data.' },
+  'k_filter_table': { ro: 'Filtreaza tabelul...', en: 'Filter table...' },
+  'k_full_transaction_details_included': { ro: 'Sunt incluse si detaliile complete ale tranzactiei', en: 'Full transaction details included' },
+  'k_hide_password': { ro: 'Ascunde parola', en: 'Hide password' },
+  'k_hover_any_row_to_see_full_transaction_details_from_the_pdf': { ro: 'Treci cu mouse-ul peste un rand pentru detaliile complete din PDF.', en: 'Hover any row to see full transaction details from the PDF.' },
+  'k_import_bank_statement': { ro: 'Importa extras bancar', en: 'Import Bank Statement' },
+  'k_in': { ro: 'Intrari', en: 'In' },
+  'k_income': { ro: 'Venituri', en: 'Income' },
+  'k_income_credits': { ro: 'Venituri (credit)', en: 'Income (credits)' },
+  'k_income_transactions': { ro: 'Tranzactii venituri', en: 'Income Transactions' },
+  'k_invalid_email_username_or_password': { ro: 'Email/Utilizator sau parola invalide.', en: 'Invalid Email/Username or Password.' },
+  'k_legend': { ro: 'Legenda', en: 'Legend' },
+  'k_loading': { ro: 'Incarcare...', en: 'Loading...' },
+  'k_login': { ro: 'Autentificare', en: 'Login' },
+  'k_login_register': { ro: 'Login / Inregistrare', en: 'Login / Register' },
+  'k_login_required_for_account_mode': { ro: 'Login necesar pentru modul de cont', en: 'Login Required for Account Mode' },
+  'k_logout': { ro: 'Deconectare', en: 'Logout' },
+  'k_logout_failed': { ro: 'Deconectarea a esuat.', en: 'Logout failed.' },
+  'k_merchant': { ro: 'Comerciant', en: 'Merchant' },
+  'k_merchant_type': { ro: 'Comerciant + Tip', en: 'Merchant + Type' },
+  'k_mode_selection': { ro: 'Selectare Mod', en: 'Mode Selection' },
+  'k_net': { ro: 'Net', en: 'Net' },
+  'k_net_difference': { ro: 'Diferenta neta:', en: 'Net difference:' },
+  'k_new_category_name': { ro: 'Nume categorie noua...', en: 'New category name...' },
+  'k_no_category_data_for_current_filters': { ro: 'Nu exista date de categorii pentru filtrele curente.', en: 'No category data for current filters.' },
+  'k_no_merchant_data': { ro: 'Nu exista date pentru comercianti.', en: 'No merchant data.' },
+  'k_no_savings_accounts_added': { ro: 'Nu exista conturi de economii adaugate.', en: 'No savings accounts added.' },
+  'k_no_transactions_found_for_this_view': { ro: 'Nu exista tranzactii pentru aceasta vizualizare.', en: 'No transactions found for this view.' },
+  'k_out': { ro: 'Iesiri', en: 'Out' },
+  'k_password': { ro: 'Parola', en: 'Password' },
+  'k_password_is_required': { ro: 'Parola este obligatorie.', en: 'Password is required.' },
+  'k_password_should_have_at_least_8_characters': { ro: 'Parola trebuie sa aiba cel putin 8 caractere.', en: 'Password should have at least 8 characters' },
+  'k_please_login_first_to_use_user_account_mode': { ro: 'Autentifica-te mai intai pentru a folosi modul Cont Utilizator.', en: 'Please login first to use User Account mode.' },
+  'k_please_login_to_reset_categories_in_account_mode': { ro: 'Autentifica-te pentru a reseta categoriile in modul Cont Utilizator.', en: 'Please login to reset categories in account mode.' },
+  'k_please_login_to_save_account_data': { ro: 'Autentifica-te pentru a salva datele contului.', en: 'Please login to save account data.' },
+  'k_register': { ro: 'Inregistrare', en: 'Register' },
+  'k_reload_failed': { ro: 'Reincarcarea a esuat.', en: 'Reload failed.' },
+  'k_reload_view': { ro: 'Reincarca vizualizarea', en: 'Reload View' },
+  'k_rename': { ro: 'Redenumeste', en: 'Rename' },
+  'k_reset_categories_to_initial_default_name_values': { ro: 'Reseteaza categoriile la valorile implicite', en: 'Reset Categories to initial/default name values' },
+  'k_reset_categories_warning_confirm': { ro: 'ATENTIE! Vei pierde toate modificarile pe care le-ai facut legate de categoriile tranzactiilor!\nResetezi categoriile la valorile initiale/implicite?', en: 'WARNING! You will lose all changes made to transaction categories!\nReset Categories to initial/default values?' },
+  'k_reset_failed': { ro: 'Resetarea a esuat.', en: 'Reset failed.' },
+  'k_save': { ro: 'Salveaza', en: 'Save' },
+  'k_save_category_for': { ro: 'Salveaza categoria pentru:', en: 'Save category for:' },
+  'k_save_settings_failed': { ro: 'Salvarea setarilor a esuat.', en: 'Save settings failed.' },
+  'k_savings': { ro: 'Economii', en: 'Savings' },
+  'k_savings_account_iban': { ro: 'IBAN cont economii', en: 'Savings account IBAN' },
+  'k_savings_accounts': { ro: 'Conturi de economii', en: 'Savings Accounts' },
+  'k_savings_flow': { ro: 'Flux economii', en: 'Savings Flow' },
+  'k_savings_in': { ro: 'Intrari economii', en: 'Savings In' },
+  'k_savings_net': { ro: 'Economii nete:', en: 'Savings net:' },
+  'k_savings_net_configured_accounts': { ro: 'Economii nete (conturi configurate)', en: 'Savings Net (Configured accounts)' },
+  'k_savings_out': { ro: 'Iesiri economii', en: 'Savings Out' },
+  'k_search_merchant_type': { ro: 'Cauta comerciant / tip...', en: 'Search merchant / type...' },
+  'k_select_a_category': { ro: 'Selecteaza o categorie...', en: 'Select a category...' },
+  'k_set_category_only_for_this_transaction': { ro: 'Seteaza categoria doar pentru aceasta tranzactie', en: 'Set category only for this transaction' },
+  'k_set_category_per_merchant_type': { ro: 'Seteaza categoria per comerciant + tip', en: 'Set category per merchant + type' },
+  'k_show_password': { ro: 'Arata parola', en: 'Show password' },
+  'k_signed_in': { ro: 'Conectat: ', en: 'Signed in: ' },
+  'k_signed_out_from_user_account': { ro: 'Deconectat din contul de utilizator.', en: 'Signed out from user account.' },
+  'k_signed_out_running_in_anonymous_local_mode': { ro: 'Deconectat. Ruleaza in modul anonim local.', en: 'Signed out. Running in anonymous local mode.' },
+  'k_single_transaction': { ro: 'Tranzactie individuala', en: 'Single Transaction' },
+  'k_statement_period': { ro: 'Perioada extras', en: 'Statement Period' },
+  'k_this_email_username_is_already_used': { ro: 'Acest Email/Utilizator este deja folosit.', en: 'This Email/Username is already used.' },
+  'k_top_merchants': { ro: 'Top Comercianti', en: 'Top Merchants' },
+  'k_total': { ro: 'Total', en: 'Total' },
+  'k_transactions': { ro: 'Tranzactii', en: 'Transactions' },
+  'k_type': { ro: 'Tip', en: 'Type' },
+  'k_unknown_error': { ro: 'Eroare necunoscuta', en: 'Unknown error' },
+  'k_upload_a_statement_to_see_your_dashboard': { ro: 'Incarca un extras pentru a vedea dashboard-ul.', en: 'Upload a statement to see your dashboard.' },
+  'k_app_description': { ro: 'Transforma automat orice extras de cont intr-un dashboard financiar interactiv ce ofera control complet pentru organizarea, filtrarea si interpretarea tranzactiilor, o balanta clara Venituri vs. Cheltuieli, plus posibilitatea de a include si configura detalii legate de economii.', en: 'Automatically turn any account statement into an interactive financial dashboard with full control for organizing, filtering, and interpreting transactions, a clear Income vs. Expenses balance, plus configurable savings details.' },
+  'k_mode_anonymous_description': { ro: 'Functioneaza imediat fara cont. Categoriile si override-urile se salveaza local, doar in acest browser/dispozitiv.', en: 'Works immediately with no account. Categories and overrides are saved only in this browser/device using local storage.' },
+  'k_mode_account_description': { ro: 'Autentifica-te pentru a salva categoriile si override-urile per cont in baza de date, sincronizate intre sesiuni.', en: 'Sign in to store categories and merchant/type overrides per account in the database, synced across sessions.' },
+  'k_footer_local_vs_account': { ro: 'V1.1 - Modul anonim foloseste cache local. Modul autentificat stocheaza categoriile si override-urile per cont.', en: 'V1.1 - Anonymous mode uses local cache. Signed-in mode stores categories and overrides per account.' },
+  'k_user_account': { ro: 'Cont Utilizator', en: 'User Account' },
+  'k_user_account_with_name': { ro: 'Cont Utilizator ({user})', en: 'User Account ({user})' },
+  'k_user_login': { ro: 'Autentificare utilizator', en: 'User Login' },
+  'k_category_change_mode_merchant_type_desc': { ro: 'Comerciant + Tip: schimbarea pe un rand se aplica tuturor tranzactiilor cu acelasi Comerciant si Tip.', en: 'Merchant + Type: changing one row applies category to all transactions with same Merchant and Type.' },
+  'k_category_change_mode_single_tx_desc': { ro: 'Tranzactie individuala: schimbarea pe un rand se aplica doar acelei tranzactii.', en: 'Single Transaction: changing one row applies category only to that exact transaction.' },
+  'k_category_change_mode_merchant_type_short_desc': { ro: 'Schimbarea pe un rand se aplica tuturor tranzactiilor cu acelasi Comerciant si Tip.', en: 'Changing one row applies category to all transactions with same Merchant and Type.' },
+  'k_category_change_mode_single_tx_short_desc': { ro: 'Schimbarea pe un rand se aplica doar acelei tranzactii.', en: 'Changing one row applies category only to that exact transaction.' },
+  'k_savings_accounts_modal_help': { ro: 'Toate IBAN-urile adaugate in aceasta lista sunt considerate conturi de economii. Tranzactiile din extras care contin aceste conturi sunt folosite pentru calculul economiilor nete.', en: 'All IBANs added to this list are treated as savings accounts. Transactions from the uploaded statement that contain these accounts are used to calculate the net savings amount.' },
+} as const
 
-export function translateWithKey(language: Language, key: string, ro: string, en: string): string {
-  const existing = TRANSITIONAL_KEY_REGISTRY[key]
-  if (!existing) {
-    TRANSITIONAL_KEY_REGISTRY[key] = { ro, en }
-  }
-  const pair = TRANSITIONAL_KEY_REGISTRY[key] ?? { ro, en }
+export function translateKey(language: Language, key: string): string {
+  const pair = KEY_TEXTS[key as keyof typeof KEY_TEXTS]
+  if (!pair) return key
   return translate(language, pair.ro, pair.en)
 }
+
+function formatTemplate(template: string, values?: InterpolationValues): string {
+  if (!values) return template
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, k) => String(values[k] ?? `{${k}}`))
+}
+
+export function translateKeyFormat(language: Language, key: string, values?: InterpolationValues): string {
+  const pair = KEY_TEXTS[key as keyof typeof KEY_TEXTS]
+  if (!pair) return formatTemplate(key, values)
+  return translate(language, formatTemplate(pair.ro, values), formatTemplate(pair.en, values))
+}
+
 export const LANGUAGE_OPTIONS: Array<{ value: Language; label: string }> = [
   { value: 'en', label: 'English' },
   { value: 'ro', label: 'Romana' },
@@ -439,4 +601,6 @@ export const LANGUAGE_OPTIONS: Array<{ value: Language; label: string }> = [
   { value: 'it', label: 'Italiano' },
   { value: 'de', label: 'Deutsch' },
 ]
+
+
 

@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+set -eu
+
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+if [ "$branch" != "main" ]; then
+  echo "[pre-push] BVT skipped on branch: $branch (enforced only on main)"
+  exit 0
+fi
+
+if command -v powershell >/dev/null 2>&1; then
+  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bvt.ps1
+elif command -v pwsh >/dev/null 2>&1; then
+  pwsh -NoProfile -File scripts/bvt.ps1
+else
+  sh scripts/bvt.sh
+fi

@@ -1,5 +1,6 @@
 import io
 import os
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
@@ -9,11 +10,14 @@ from fastapi import Cookie, Depends, FastAPI, File, HTTPException, Response, Upl
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from passlib.context import CryptContext
+from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .db import get_db, init_db
-from .models import User, UserCategory, UserOverride, UserSession, UserSetting
+from .oauth import router as oauth_router
+from .mailer import send_email_verification_code
+from .models import User, UserCategory, UserOverride, UserSession, UserSetting, UserOAuthIdentity, EmailVerificationChallenge
 from .parser import (
     categorize_transactions,
     extract_statement_details_pdf,
@@ -35,6 +39,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(oauth_router)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SESSION_COOKIE_NAME = "expenses_helper_session"
@@ -97,6 +103,19 @@ class IdentifierAvailability(BaseModel):
     available: bool
 
 
+class EmailVerificationRequest(BaseModel):
+    identifier: str = Field(min_length=3, max_length=320)
+    code: str = Field(min_length=6, max_length=6)
+
+
+class AuthResponse(BaseModel):
+    authenticated: bool
+    email: Optional[str] = None
+    verification_required: bool = False
+    verification_channel: Optional[str] = None
+    message: Optional[str] = None
+
+
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
@@ -115,6 +134,101 @@ def extract_identifier(payload: AuthRequest) -> str:
     if not value:
         raise HTTPException(status_code=422, detail="Identifier is required.")
     return value
+
+
+def is_email_identifier(identifier: str) -> bool:
+    return "@" in (identifier or "")
+
+
+def validate_email_identifier(identifier: str) -> str:
+    try:
+        result = validate_email(identifier, check_deliverability=False)
+    except EmailNotValidError as e:
+        raise HTTPException(status_code=422, detail="Invalid email address.") from e
+    return result.normalized.lower()
+
+
+def create_user_with_defaults(db: Session, identifier: str, password_hash_value: str) -> User:
+    user = User(email=identifier, password_hash=password_hash_value)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    categories = sanitize_categories(DEFAULT_CATEGORIES)
+    db.add_all([UserCategory(user_id=user.id, name=name) for name in categories])
+    db.commit()
+    return user
+
+
+def generate_email_verification_code() -> str:
+    return f"{secrets.randbelow(1000000):06d}"
+
+
+def issue_email_register_challenge(db: Session, identifier: str, password_plain: str) -> str:
+    code = generate_email_verification_code()
+    row = db.scalar(select(EmailVerificationChallenge).where(
+        EmailVerificationChallenge.identifier == identifier,
+        EmailVerificationChallenge.purpose == "register",
+    ))
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(minutes=10)
+    if row is None:
+        row = EmailVerificationChallenge(
+            identifier=identifier,
+            purpose="register",
+            password_hash_pending=hash_password(password_plain),
+            code_hash=hash_password(code),
+            expires_at=expires,
+            attempts=0,
+            max_attempts=5,
+        )
+        db.add(row)
+    else:
+        row.password_hash_pending = hash_password(password_plain)
+        row.code_hash = hash_password(code)
+        row.expires_at = expires
+        row.attempts = 0
+        row.max_attempts = 5
+    db.commit()
+    return code
+
+
+def consume_email_register_challenge(db: Session, identifier: str, code: str) -> User:
+    row = db.scalar(select(EmailVerificationChallenge).where(
+        EmailVerificationChallenge.identifier == identifier,
+        EmailVerificationChallenge.purpose == "register",
+    ))
+    if not row:
+        raise HTTPException(status_code=404, detail="No pending email verification found.")
+
+    now = datetime.now(timezone.utc)
+    expires_at = row.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < now:
+        db.delete(row)
+        db.commit()
+        raise HTTPException(status_code=410, detail="Verification code expired.")
+
+    if row.attempts >= row.max_attempts:
+        db.delete(row)
+        db.commit()
+        raise HTTPException(status_code=429, detail="Too many verification attempts. Please register again.")
+
+    row.attempts += 1
+    if not verify_password(code, row.code_hash):
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invalid verification code.")
+
+    if db.scalar(select(User).where(User.email == identifier)):
+        db.delete(row)
+        db.commit()
+        raise HTTPException(status_code=409, detail="Identifier already registered.")
+
+    user = create_user_with_defaults(db, identifier, row.password_hash_pending)
+    db.delete(row)
+    db.commit()
+    return user
 
 
 def make_session(db: Session, user_id: int) -> UserSession:
@@ -189,18 +303,36 @@ def health():
 @app.post("/auth/register")
 def register(payload: AuthRequest, response: Response, db: Session = Depends(get_db)):
     identifier = extract_identifier(payload)
+    if is_email_identifier(identifier):
+        identifier = validate_email_identifier(identifier)
     if db.scalar(select(User).where(User.email == identifier)):
         raise HTTPException(status_code=409, detail="Identifier already registered.")
 
-    user = User(email=identifier, password_hash=hash_password(payload.password))
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    if is_email_identifier(identifier):
+        code = issue_email_register_challenge(db, identifier, payload.password)
+        delivery = send_email_verification_code(identifier, code)
+        return {
+            "authenticated": False,
+            "verification_required": True,
+            "verification_channel": "email",
+            "email": identifier,
+            "message": "Verification code sent to email." if delivery == "smtp" else "Verification code generated. Check backend logs (dev).",
+        }
 
-    categories = sanitize_categories(DEFAULT_CATEGORIES)
-    db.add_all([UserCategory(user_id=user.id, name=name) for name in categories])
-    db.commit()
+    user = create_user_with_defaults(db, identifier, hash_password(payload.password))
+    session = make_session(db, user.id)
+    set_session_cookie(response, session.token)
+    return {"authenticated": True, "email": user.email}
 
+
+@app.post("/auth/register/verify-email")
+def verify_register_email(payload: EmailVerificationRequest, response: Response, db: Session = Depends(get_db)):
+    identifier = validate_email_identifier(normalize_identifier(payload.identifier or ""))
+    code = re.sub(r"\D+", "", payload.code or "")
+    if len(code) != 6:
+        raise HTTPException(status_code=422, detail="Verification code must have 6 digits.")
+
+    user = consume_email_register_challenge(db, identifier, code)
     session = make_session(db, user.id)
     set_session_cookie(response, session.token)
     return {"authenticated": True, "email": user.email}
