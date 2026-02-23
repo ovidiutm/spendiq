@@ -385,9 +385,14 @@ export default function Dashboard({
     return filtered.filter(t => (t.category ?? 'Other') === chartFocusCategory)
   }, [filtered, chartFocusCategory])
 
+  const topMerchantsSource = useMemo(() => {
+    if (balanceTableFilter !== 'savings') return topMerchantsBase
+    return topMerchantsBase.filter(t => t.amount !== null && txMentionsAnySavingsAccount(t, savingsAccounts))
+  }, [topMerchantsBase, balanceTableFilter, savingsAccounts])
+
   const topMerchants = useMemo(() => {
     const m = new Map<string, number>()
-    for (const t of topMerchantsBase) {
+    for (const t of topMerchantsSource) {
       if (t.amount === null) continue
       const merch = getMerchantKey(t)
       m.set(merch, (m.get(merch) ?? 0) + Math.abs(t.amount))
@@ -396,16 +401,13 @@ export default function Dashboard({
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8)
-  }, [topMerchantsBase])
+  }, [topMerchantsSource])
 
   const tableBase = useMemo(() => {
-    const merchantScoped = !chartFocusMerchant
-      ? topMerchantsBase
-      : topMerchantsBase.filter(t => getMerchantKey(t) === chartFocusMerchant)
-
-    if (balanceTableFilter !== 'savings') return merchantScoped
-    return merchantScoped.filter(t => t.amount !== null && txMentionsAnySavingsAccount(t, savingsAccounts))
-  }, [topMerchantsBase, chartFocusMerchant, balanceTableFilter, savingsAccounts])
+    return !chartFocusMerchant
+      ? topMerchantsSource
+      : topMerchantsSource.filter(t => getMerchantKey(t) === chartFocusMerchant)
+  }, [topMerchantsSource, chartFocusMerchant])
 
   const incomeVsExpensesBase = useMemo(() => txs, [txs])
 
@@ -841,11 +843,11 @@ export default function Dashboard({
 
   useEffect(() => {
     if (!chartFocusMerchant) return
-    const stillExists = topMerchantsBase.some(t => getMerchantKey(t) === chartFocusMerchant)
+    const stillExists = topMerchantsSource.some(t => getMerchantKey(t) === chartFocusMerchant)
     if (!stillExists) {
       setChartFocusMerchant(null)
     }
-  }, [topMerchantsBase, chartFocusMerchant])
+  }, [topMerchantsSource, chartFocusMerchant])
 
   useEffect(() => {
     if (!pendingSavingsHighlight) return
