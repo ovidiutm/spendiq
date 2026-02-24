@@ -5,7 +5,7 @@ import ReactECharts from 'echarts-for-react/lib/core'
 import { PieChart, BarChart } from 'echarts/charts'
 import { TooltipComponent, GridComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { translateKey, type Language } from './i18n'
+import { translateKey, translateKeyFormat, type Language } from './i18n'
 import { saveTextFileWithPrompt } from './fileSave'
 
 echarts.use([
@@ -101,6 +101,7 @@ type SortColumn = 'date' | 'merchant' | 'type' | 'category' | 'amount'
 type SortDirection = 'asc' | 'desc'
 type FinanceModalKind = 'income' | 'expenses' | 'savings'
 type BalanceTableFilter = 'none' | 'savings'
+type TablePageSize = 25 | 50 | 100 | 'All'
 
 function toCsvRow(values: (string | number | null | undefined)[]): string {
   return values
@@ -219,6 +220,7 @@ export default function Dashboard({
   onResetSettings,
 }: Props) {
   const t = (key: string) => translateKey(language, key)
+  const tf = (key: string, values?: Record<string, string | number>) => translateKeyFormat(language, key, values)
   const initialView = loadDashboardViewState()
   const [isResettingSettings, setIsResettingSettings] = useState(false)
   const [categoryActionBusy, setCategoryActionBusy] = useState<'add' | 'rename' | 'delete' | null>(null)
@@ -243,6 +245,8 @@ export default function Dashboard({
     setCategoryChangeMode('merchant_type')
     setSortBy('date')
     setSortDir('desc')
+    setTablePageSize(25)
+    setTablePage(1)
     setChartFocusCategory(null)
     setChartFocusMerchant(null)
     setHoveredLegendCategory(null)
@@ -287,6 +291,8 @@ export default function Dashboard({
       : 'date'
   )
   const [sortDir, setSortDir] = useState<SortDirection>(initialView.sortDir === 'asc' ? 'asc' : 'desc')
+  const [tablePageSize, setTablePageSize] = useState<TablePageSize>(25)
+  const [tablePage, setTablePage] = useState(1)
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false)
   const [isSavingsAccountsModalOpen, setIsSavingsAccountsModalOpen] = useState(false)
   const [newSavingsAccount, setNewSavingsAccount] = useState('')
@@ -596,6 +602,25 @@ export default function Dashboard({
     [tableRows]
   )
 
+  const tableTotalPages = useMemo(() => {
+    if (tablePageSize === 'All') return 1
+    return Math.max(1, Math.ceil(tableRows.length / tablePageSize))
+  }, [tableRows.length, tablePageSize])
+
+  useEffect(() => {
+    setTablePage(1)
+  }, [tableQuery, tableQueryField, sortBy, sortDir, tablePageSize, tableBase])
+
+  useEffect(() => {
+    setTablePage(prev => Math.min(prev, tableTotalPages))
+  }, [tableTotalPages])
+
+  const tablePageStart = tablePageSize === 'All' ? 0 : (tablePage - 1) * tablePageSize
+  const visibleTableRows = useMemo(() => {
+    if (tablePageSize === 'All') return tableRows
+    return tableRows.slice(tablePageStart, tablePageStart + tablePageSize)
+  }, [tableRows, tablePageSize, tablePageStart])
+
   const onExportCsv = async () => {
     if (!canExport) return
     const csv = buildCsv(tableRows)
@@ -637,6 +662,171 @@ export default function Dashboard({
     if (sortBy !== column) return '\u2195'
     return sortDir === 'asc' ? '\u2191' : '\u2193'
   }
+
+
+  const [isPaginationCompactWidth, setIsPaginationCompactWidth] = useState<boolean>(() => (
+    typeof window !== 'undefined' ? window.innerWidth < 980 : false
+  ))
+  useEffect(() => {
+    const onResize = () => setIsPaginationCompactWidth(window.innerWidth < 980)
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const paginationPageItems = useMemo<(number | 'ellipsis' | 'empty')[]>(() => {
+    const PAGE_SLOT_COUNT = 5 // 4 numbers + 1 ellipsis OR 3 numbers + 2 ellipsis
+
+    if (tableTotalPages <= 5) {
+      const items = Array.from({ length: tableTotalPages }, (_, i) => i + 1) as (number | 'ellipsis' | 'empty')[]
+      while (items.length < PAGE_SLOT_COUNT) items.push('empty')
+      return items
+    }
+
+    const current = Math.min(Math.max(1, tablePage), tableTotalPages)
+    const items: (number | 'ellipsis' | 'empty')[] = []
+
+    if (current <= 2) {
+      items.push(1, 2, 3, 4, 'ellipsis')
+      return items
+    }
+
+    if (current >= tableTotalPages - 2) {
+      items.push('ellipsis', tableTotalPages - 3, tableTotalPages - 2, tableTotalPages - 1, tableTotalPages)
+      return items
+    }
+
+    items.push('ellipsis', current - 1, current, current + 1, 'ellipsis')
+    return items
+  }, [tablePage, tableTotalPages])
+
+  const canShowPaginationJumpButtons = !isPaginationCompactWidth
+  const showFirstPageJump = canShowPaginationJumpButtons && tablePageSize !== 'All' && tableRows.length > 0 && tablePage > 2
+  const showLastPageJump = canShowPaginationJumpButtons && tablePageSize !== 'All' && tableRows.length > 0 && tablePage < tableTotalPages - 1
+
+  const renderTablePagination = (position: 'top' | 'bottom') => (
+    <div
+      id={`transactions-pagination-${position}`}
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: 12,
+        flexWrap: 'wrap',
+        marginBottom: position === 'top' ? 8 : 0,
+        marginTop: position === 'bottom' ? 8 : 0,
+      }}
+    >
+      <div style={{ width: 210, flex: '0 0 210px', fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+        {tableRows.length === 0 ? t('k_no_rows') : tf('k_showing_range_of_total', { from: tablePageStart + 1, to: tablePageStart + visibleTableRows.length, total: tableRows.length })}
+      </div>
+      <div style={{ flex: '1 1 auto', display: 'flex', justifyContent: 'center', minWidth: 0 }}>
+        <div style={{ width: 'fit-content', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', justifyContent: 'center', boxSizing: 'border-box', flexWrap: 'nowrap' }}>
+          <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>{t('k_rows_per_page')}</span>
+          <select
+            id={`select-transactions-page-size-${position}`}
+            value={String(tablePageSize)}
+            onChange={e => {
+              const v = e.target.value
+              setTablePageSize(v === 'All' ? 'All' : (Number(v) as 25 | 50 | 100))
+            }}
+            style={{ width: 58, padding: '4px 6px', borderRadius: 8, border: '1px solid #bbb', fontSize: 12, background: '#fff' }}
+          >
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="All">All</option>
+          </select>
+          <div style={{ width: 1, height: 18, background: '#dbe4ef' }} />
+          {canShowPaginationJumpButtons ? (
+            <button
+              id={`btn-transactions-page-first-${position}`}
+              className="app-btn"
+              onClick={() => setTablePage(1)}
+              disabled={!showFirstPageJump}
+              style={{ width: 28, height: 26, padding: 0, borderRadius: 8, border: '1px solid #d1dbe8', background: !showFirstPageJump ? '#f1f5f9' : '#fff', color: '#1f2937', fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              {'<<'}
+            </button>
+          ) : null}
+          <button
+            id={`btn-transactions-page-prev-${position}`}
+            className="app-btn"
+            onClick={() => setTablePage(p => Math.max(1, p - 1))}
+            disabled={tablePageSize === 'All' || tablePage <= 1 || tableRows.length === 0}
+            style={{ width: 28, height: 26, padding: 0, borderRadius: 8, border: '1px solid #d1dbe8', background: (tablePageSize === 'All' || tablePage <= 1 || tableRows.length === 0) ? '#f1f5f9' : '#fff', color: '#1f2937', fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {'<'}
+          </button>
+          <div style={{ width: 136, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, flex: '0 0 136px' }}>
+            {paginationPageItems.map((item, idx) => (
+              item === 'empty' ? (
+                <span
+                  key={`empty-${position}-${idx}`}
+                  style={{ width: 24, height: 20, display: 'inline-block', visibility: 'hidden' }}
+                  aria-hidden="true"
+                />
+              ) : item === 'ellipsis' ? (
+                <span key={`ellipsis-${position}-${idx}`} style={{ width: 20, textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: '0 2px' }}>...</span>
+              ) : (
+                <a
+                  key={`page-${position}-${item}`}
+                  id={`link-transactions-page-${position}-${item}`}
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    if (tablePageSize === 'All' || tableRows.length === 0) return
+                    setTablePage(item)
+                  }}
+                  aria-current={item === tablePage ? 'page' : undefined}
+                  style={{
+                    width: 24,
+                    height: 20,
+                    padding: 0,
+                    borderRadius: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textDecoration: item === tablePage ? 'underline' : 'none',
+                    textUnderlineOffset: 2,
+                    color: tablePageSize === 'All' || tableRows.length === 0 ? '#94a3b8' : '#334155',
+                    background: 'transparent',
+                    border: 'none',
+                    fontSize: 12,
+                    fontWeight: item === tablePage ? 700 : 500,
+                    cursor: tablePageSize === 'All' || tableRows.length === 0 ? 'default' : 'pointer',
+                  }}
+                >
+                  {item}
+                </a>
+              )
+            ))}
+          </div>
+          <button
+            id={`btn-transactions-page-next-${position}`}
+            className="app-btn"
+            onClick={() => setTablePage(p => Math.min(tableTotalPages, p + 1))}
+            disabled={tablePageSize === 'All' || tablePage >= tableTotalPages || tableRows.length === 0}
+            style={{ width: 28, height: 26, padding: 0, borderRadius: 8, border: '1px solid #d1dbe8', background: (tablePageSize === 'All' || tablePage >= tableTotalPages || tableRows.length === 0) ? '#f1f5f9' : '#fff', color: '#1f2937', fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {'>'}
+          </button>
+          {canShowPaginationJumpButtons ? (
+            <button
+              id={`btn-transactions-page-last-${position}`}
+              className="app-btn"
+              onClick={() => setTablePage(tableTotalPages)}
+              disabled={!showLastPageJump}
+              style={{ width: 28, height: 26, padding: 0, borderRadius: 8, border: '1px solid #d1dbe8', background: !showLastPageJump ? '#f1f5f9' : '#fff', color: '#1f2937', fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              {'>>'}
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div style={{ width: 210, flex: '0 0 210px' }} />
+    </div>
+  )
 
   const getDetailsText = (t: Transaction): string => {
     if (Array.isArray(t.raw_lines) && t.raw_lines.length > 0) {
@@ -1371,8 +1561,40 @@ export default function Dashboard({
               value={q}
               onChange={e => setQ(e.target.value)}
               placeholder={t('k_search_merchant_type')}
-              style={{ padding: '8px 8px 8px 30px', borderRadius: 10, border: '1px solid #bbb', width: '100%', minWidth: 0, boxSizing: 'border-box' }}
+              style={{ padding: '8px 32px 8px 30px', borderRadius: 10, border: '1px solid #bbb', width: '100%', minWidth: 0, boxSizing: 'border-box' }}
             />
+            <button
+              id="btn-clear-top-merchants-filter"
+              className="app-btn"
+              type="button"
+              onClick={() => setQ('')}
+              disabled={!q}
+              title={t('k_clear_filter')}
+              aria-label={t('k_clear_filter')}
+              style={{
+                position: 'absolute',
+                right: 6,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 20,
+                height: 20,
+                borderRadius: 6,
+                border: '1px solid #d1d5db',
+                background: '#ffffff',
+                color: '#475569',
+                fontSize: 11,
+                lineHeight: 1,
+                padding: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: q ? 'pointer' : 'default',
+                visibility: q ? 'visible' : 'hidden',
+                opacity: q ? 1 : 0,
+              }}
+            >
+              X
+            </button>
           </div>
           <div style={{ flex: 1, minHeight: 210 }}>
             <div style={{ height: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 20px', columnGap: 10, rowGap: 0 }}>
@@ -1508,8 +1730,40 @@ export default function Dashboard({
               value={tableQuery}
               onChange={e => setTableQuery(e.target.value)}
               placeholder={t('k_filter_table')}
-              style={{ padding: '8px 8px 8px 30px', borderRadius: 10, border: '1px solid #bbb', width: '100%', boxSizing: 'border-box' }}
+              style={{ padding: '8px 32px 8px 30px', borderRadius: 10, border: '1px solid #bbb', width: '100%', boxSizing: 'border-box' }}
             />
+            <button
+              id="btn-clear-transactions-filter"
+              className="app-btn"
+              type="button"
+              onClick={() => setTableQuery('')}
+              disabled={!tableQuery}
+              title={t('k_clear_filter')}
+              aria-label={t('k_clear_filter')}
+              style={{
+                position: 'absolute',
+                right: 6,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 20,
+                height: 20,
+                borderRadius: 6,
+                border: '1px solid #d1d5db',
+                background: '#ffffff',
+                color: '#475569',
+                fontSize: 11,
+                lineHeight: 1,
+                padding: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: tableQuery ? 'pointer' : 'default',
+                visibility: tableQuery ? 'visible' : 'hidden',
+                opacity: tableQuery ? 1 : 0,
+              }}
+            >
+              X
+            </button>
           </div>
           <select
             id="select-transactions-filter-field"
@@ -1553,7 +1807,6 @@ export default function Dashboard({
               {t('k_single_transaction')}
             </option>
           </select>
-          <div style={{ width: 1, height: 26, background: '#dbe4ef' }} />
           <div style={{ color: '#64748b', fontSize: 12 }}>
             {t('k_transactions')}: {tableRows.length} | {t('k_amount_sum')}: {formatRON(tableAmountSum)}
           </div>
@@ -1578,6 +1831,7 @@ export default function Dashboard({
             {t('k_export_csv_filtered')}
           </button>
         </div>
+        {renderTablePagination('top')}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <colgroup>
@@ -1617,10 +1871,12 @@ export default function Dashboard({
               </tr>
             </thead>
             <tbody>
-              {tableRows.map((tx, idx) => (
-                <tr
-                  key={idx}
-                  onMouseOver={() => setHoveredRowKey(`${tx.date}-${idx}`)}
+              {visibleTableRows.map((tx, idx) => {
+                const rowIndex = tablePageStart + idx
+                return (
+                  <tr
+                  key={rowIndex}
+                  onMouseOver={() => setHoveredRowKey(`${tx.date}-${rowIndex}`)}
                   onMouseEnter={(e) => {
                     setHoveredDetails(null)
                     scheduleHover(getDetailsText(tx), e.clientX, e.clientY)
@@ -1648,7 +1904,7 @@ export default function Dashboard({
                   }}
                   style={{
                     borderBottom: '2px solid #d6e1ee',
-                    background: hoveredRowKey === `${tx.date}-${idx}` ? '#f4f7fb' : '#ffffff',
+                    background: hoveredRowKey === `${tx.date}-${rowIndex}` ? '#f4f7fb' : '#ffffff',
                     transition: 'background-color 120ms ease',
                   }}
                 >
@@ -1662,7 +1918,7 @@ export default function Dashboard({
                   </td>
                   <td style={{ padding: '8px 6px', width: categoryCellWidth, minWidth: categoryCellWidth, maxWidth: categoryCellWidth }}>
                     <select
-                      id={`select-transaction-category-${idx}`}
+                      id={`select-transaction-category-${rowIndex}`}
                       value={tx.category ?? 'Other'}
                       onChange={(e) => (
                         categoryChangeMode === 'merchant_type'
@@ -1691,11 +1947,13 @@ export default function Dashboard({
                   <td style={{ padding: '8px 6px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                     {formatRON(tx.amount)}
                   </td>
-                </tr>
-              ))}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
+        {renderTablePagination('bottom')}
       </div>
       {hoveredDetails && (
         <div
